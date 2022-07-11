@@ -10,6 +10,12 @@
 
 #include <linux/kmsan-checks.h>
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#define _CC_GLOBALS_NO_INCLUDES_
+//#include <asm/linux_cc.h> // #include <linux/cc_globals.h>
+#include "linux_cc_cc_globals.h"
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 /* duplicated to the one in bootmem.h */
 extern unsigned long max_pfn;
 extern unsigned long phys_base;
@@ -20,10 +26,23 @@ extern unsigned long vmemmap_base;
 
 static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	unsigned long y = 0;
+	bool is_ca=false;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)x);
+	if (is_ca) {
+		x = (unsigned long) cc_isa_decptr((uint64_t) x);
+	}
+	y = x - KERNEL_MAP_BASE;
+	/* use the carry flag to determine if x was < __START_KERNEL_map */
+	x = y + ((x > y) ? phys_base : (KERNEL_MAP_BASE - PAGE_OFFSET));
+#else // !CONFIG_X86_C3_KERNEL_SPACE
 	unsigned long y = x - KERNEL_MAP_BASE;
 
 	/* use the carry flag to determine if x was < KERNEL_MAP_BASE */
 	x = y + ((x > y) ? phys_base : (KERNEL_MAP_BASE - PAGE_OFFSET));
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 	return x;
 }

@@ -37,7 +37,7 @@ int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
 	void __rcu **slot;
 	unsigned int base = idr->idr_base;
 	unsigned int id = *nextid;
-
+	gfp|=___GFP_CC3_EXCLUDE; // panic w/o
 	if (WARN_ON_ONCE(!(idr->idr_rt.xa_flags & ROOT_IS_IDR)))
 		idr->idr_rt.xa_flags |= IDR_RT_MARKER;
 

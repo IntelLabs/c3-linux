@@ -40,6 +40,7 @@
 #include <linux/ftrace.h>
 #include <linux/syscalls.h>
 
+#include <asm/linux_cc.h>
 #include <asm/processor.h>
 #include <asm/pkru.h>
 #include <asm/fpu/sched.h>
@@ -569,6 +570,18 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 
 	if (!test_thread_flag(TIF_NEED_FPU_LOAD))
 		switch_fpu_prepare(prev_fpu, cpu);
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+	// We should eventually always do the save->load cycle, but this avoids
+	// the user of C3 instructions unless C3 is enbled, which might be
+	// useful for simulation purposes (maybe?).
+	if (task_cc_is_enabled(prev_p)) {
+		task_cc_save_context(prev_p);
+		task_cc_load_context(next_p);
+	} else if (task_cc_is_enabled(next_p)) {
+		task_cc_load_context(next_p);
+	}
+#endif
 
 	/* We must save %fs and %gs before load_TLS() because
 	 * %fs and %gs may be cleared by load_TLS().

@@ -88,7 +88,7 @@ MPI mpi_alloc(unsigned nlimbs)
 {
 	MPI a;
 
-	a = kmalloc(sizeof *a, GFP_KERNEL);
+	a = kmalloc(sizeof *a, GFP_KERNEL|___GFP_CC3_EXCLUDE);
 	if (!a)
 		return a;
 
@@ -118,7 +118,7 @@ mpi_ptr_t mpi_alloc_limb_space(unsigned nlimbs)
 	if (!len)
 		return NULL;
 
-	return kmalloc(len, GFP_KERNEL);
+	return kmalloc(len, GFP_KERNEL|___GFP_CC3_EXCLUDE);
 }
 
 void mpi_free_limb_space(mpi_ptr_t a)

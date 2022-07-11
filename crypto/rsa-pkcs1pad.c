@@ -538,7 +538,7 @@ static int pkcs1pad_verify(struct akcipher_request *req)
 	    !ctx->key_size || sig_size != ctx->key_size)
 		return -EINVAL;
 
-	req_ctx->out_buf = kmalloc(ctx->key_size + digest_size, GFP_KERNEL);
+	req_ctx->out_buf = kmalloc(ctx->key_size + digest_size, GFP_KERNEL | ___GFP_CC3_EXCLUDE);
 	if (!req_ctx->out_buf)
 		return -ENOMEM;
 

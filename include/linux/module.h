@@ -31,6 +31,8 @@
 #include <linux/percpu.h>
 #include <asm/module.h>
 
+#include <linux/C3defines.h>
+
 #define MODULE_NAME_LEN MAX_PARAM_PREFIX_LEN
 
 struct modversion_info {
@@ -553,6 +555,11 @@ struct module {
 #ifdef CONFIG_FUNCTION_ERROR_INJECTION
 	struct error_injection_entry *ei_funcs;
 	unsigned int num_ei_funcs;
+#endif
+// C3
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+	u64 encoded_address_adjust;
+	char* secstrings;
 #endif
 } ____cacheline_aligned __randomize_layout;
 #ifndef MODULE_ARCH_INIT

@@ -43,6 +43,7 @@ CFLAGS_irq.o := -I $(srctree)/$(src)/../include/asm/trace
 obj-y			+= head_$(BITS).o
 obj-y			+= head$(BITS).o
 obj-y			+= ebda.o
+obj-$(CONFIG_X86_C3_USER_SPACE) += c3_user_space.o
 obj-y			+= platform-quirks.o
 obj-y			+= process_$(BITS).o signal.o signal_$(BITS).o
 obj-y			+= traps.o idt.o irq.o irq_$(BITS).o dumpstack_$(BITS).o

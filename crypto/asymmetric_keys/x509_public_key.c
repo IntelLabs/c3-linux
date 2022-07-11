@@ -33,7 +33,7 @@ int x509_get_sig_params(struct x509_certificate *cert)
 	sig->data = cert->tbs;
 	sig->data_size = cert->tbs_size;
 
-	sig->s = kmemdup(cert->raw_sig, cert->raw_sig_size, GFP_KERNEL);
+	sig->s = kmemdup(cert->raw_sig, cert->raw_sig_size, GFP_KERNEL | ___GFP_CC3_EXCLUDE);
 	if (!sig->s)
 		return -ENOMEM;
 

@@ -2536,6 +2536,12 @@ static void event_remove(struct trace_event_call *call)
 	remove_event_from_tracers(call);
 	list_del(&call->list);
 }
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+static inline void cc_ctx_set_shadow_rip_enabled(struct cc_context *ctx,
+                                                 bool shadow_rip_enabled) {
+    ctx->flags_.bitfield_.shadow_rip_enabled_ = shadow_rip_enabled;
+}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 static int event_init(struct trace_event_call *call)
 {
@@ -2547,6 +2553,15 @@ static int event_init(struct trace_event_call *call)
 		return -EINVAL;
 
 	if (call->class->raw_init) {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+		struct cc_context ctx;
+		if (!is_canonical((u64)call->class->raw_init)) {
+			printk(KERN_ALERT ">> C3: event_init set shadow rip enabled\n");
+			cc_save_context(&ctx);
+			cc_ctx_set_shadow_rip_enabled(&ctx, true);
+			cc_load_context(&ctx);
+		}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 		ret = call->class->raw_init(call);
 		if (ret < 0 && ret != -ENOSYS)
 			pr_warn("Could not initialize trace events/%s\n", name);

@@ -52,7 +52,7 @@ static void fuse_request_init(struct fuse_mount *fm, struct fuse_req *req)
 
 static struct fuse_req *fuse_request_alloc(struct fuse_mount *fm, gfp_t flags)
 {
-	struct fuse_req *req = kmem_cache_zalloc(fuse_req_cachep, flags);
+	struct fuse_req *req = kmem_cache_zalloc(fuse_req_cachep, flags|___GFP_CC3_EXCLUDE); // needed input/output error
 	if (req)
 		fuse_request_init(fm, req);
 
@@ -490,7 +490,7 @@ ssize_t fuse_simple_request(struct fuse_mount *fm, struct fuse_args *args)
 
 	if (args->force) {
 		atomic_inc(&fc->num_waiting);
-		req = fuse_request_alloc(fm, GFP_KERNEL | __GFP_NOFAIL);
+		req = fuse_request_alloc(fm, GFP_KERNEL | __GFP_NOFAIL|___GFP_CC3_EXCLUDE);
 
 		if (!args->nocreds)
 			fuse_force_creds(req);

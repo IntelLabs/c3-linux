@@ -3369,6 +3369,14 @@ static __always_inline void __cache_free(struct kmem_cache *cachep, void *objp,
 					 unsigned long caller)
 {
 	bool init;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	bool is_ca;
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+		clear_icv((void*)objp, cachep->object_size);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 	memcg_slab_free_hook(cachep, virt_to_slab(objp), &objp, 1);
 
@@ -3401,6 +3409,15 @@ static __always_inline void __cache_free(struct kmem_cache *cachep, void *objp,
 void ___cache_free(struct kmem_cache *cachep, void *objp,
 		unsigned long caller)
 {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	bool is_ca;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+		clear_icv((void*)objp, cachep->object_size);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	struct array_cache *ac = cpu_cache_get(cachep);
 
 	check_irq_off();
@@ -3440,11 +3457,24 @@ static __always_inline
 void *__kmem_cache_alloc_lru(struct kmem_cache *cachep, struct list_lru *lru,
 			     gfp_t flags)
 {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	ptr_metadata_t ptr_metadata = {0};
+	bool is_ca=false;
+
+	void *retAddr = slab_alloc(cachep, lru, flags, cachep->object_size, _RET_IP_);
+
+	trace_kmem_cache_alloc(_RET_IP_, retAddr, cachep, flags, NUMA_NO_NODE);
+
+	retAddr = cc3_kernel_encptr(retAddr, max(ksize(retAddr), cachep->object_size), flags);
+	
+	return retAddr;
+#else // !CONFIG_X86_C3_KERNEL_SPACE
 	void *ret = slab_alloc(cachep, lru, flags, cachep->object_size, _RET_IP_);
 
 	trace_kmem_cache_alloc(_RET_IP_, ret, cachep, flags, NUMA_NO_NODE);
 
 	return ret;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 }
 
 void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
@@ -3569,6 +3599,16 @@ void __do_kmem_cache_free(struct kmem_cache *cachep, void *objp,
 			  unsigned long caller)
 {
 	unsigned long flags;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	bool is_ca=false;
+	unsigned long ccflags;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+		clear_icv((void*)objp, cachep->object_size);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 	local_irq_save(flags);
 	debug_check_no_locks_freed(objp, cachep->object_size);

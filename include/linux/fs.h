@@ -2683,7 +2683,7 @@ extern int file_remove_privs(struct file *);
 static inline void *
 alloc_inode_sb(struct super_block *sb, struct kmem_cache *cache, gfp_t gfp)
 {
-	return kmem_cache_alloc_lru(cache, &sb->s_inode_lru, gfp);
+	return kmem_cache_alloc_lru(cache, &sb->s_inode_lru, gfp|___GFP_CC3_EXCLUDE); // panic w/o
 }
 
 extern void __insert_inode_hash(struct inode *, unsigned long hashval);

@@ -114,6 +114,20 @@
 
 #include <kunit/test.h>
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#ifndef _CC_GLOBALS_NO_INCLUDES_
+#define _CC_GLOBALS_NO_INCLUDES_
+#endif
+#include <linux/C3defines.h>
+#include <linux/ctype.h>
+// #include <linux/try_box.h>
+#include <asm/linux_cc.h> // #include <linux/cc_globals.h>
+static inline void cc_ctx_set_shadow_rip_enabled(struct cc_context *ctx,
+                                                 bool shadow_rip_enabled) {
+    ctx->flags_.bitfield_.shadow_rip_enabled_ = shadow_rip_enabled;
+}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -940,6 +954,13 @@ static void __init print_unknown_bootoptions(void)
 		&unknown_options[1]);
 	memblock_free(unknown_options, len);
 }
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+uint64_t  alloc_not_encptr = 0;
+uint64_t  alloc_encptr = 0;
+uint64_t  non_exclude_alloc_not_encptr=0;
+uint64_t  high_count=0;
+DEFINE_SPINLOCK(icv_lock_spnlock);
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 asmlinkage __visible void __init __no_sanitize_address __noreturn start_kernel(void)
 {
@@ -1305,6 +1326,15 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	int count = preempt_count();
 	char msgbuf[64];
 	int ret;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	//C3
+	struct cc_context ctx;
+	if (!is_canonical((u64)fn)) {
+		cc_save_context(&ctx);
+		cc_ctx_set_shadow_rip_enabled(&ctx, true);
+		cc_load_context(&ctx);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 	if (initcall_blacklisted(fn))
 		return -EPERM;

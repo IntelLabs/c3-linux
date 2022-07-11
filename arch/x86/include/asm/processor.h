@@ -29,6 +29,7 @@ struct vm86;
 #include <asm/vmxfeatures.h>
 #include <asm/vdso/processor.h>
 #include <asm/shstk.h>
+#include <asm/linux_cc.h>
 
 #include <linux/personality.h>
 #include <linux/cache.h>
@@ -482,6 +483,10 @@ struct thread_struct {
 	 * PKRU is the hardware itself.
 	 */
 	u32			pkru;
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+	struct cc_linux_thread_conf 	cc_context;
+#endif
 
 #ifdef CONFIG_X86_USER_SHADOW_STACK
 	unsigned long		features;

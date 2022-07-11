@@ -344,7 +344,7 @@ static void irq_sysfs_del(struct irq_desc *desc) {}
 
 #endif /* CONFIG_SYSFS */
 
-static RADIX_TREE(irq_desc_tree, GFP_KERNEL);
+static RADIX_TREE(irq_desc_tree, GFP_KERNEL | ___GFP_CC3_EXCLUDE); // panic w/o
 
 static void irq_insert_desc(unsigned int irq, struct irq_desc *desc)
 {

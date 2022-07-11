@@ -168,7 +168,7 @@ static struct kmem_cache *task_struct_cachep;
 
 static inline struct task_struct *alloc_task_struct_node(int node)
 {
-	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL, node);
+	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL|___GFP_CC3_EXCLUDE, node); // panic w/o
 }
 
 static inline void free_task_struct(struct task_struct *tsk)
@@ -1668,7 +1668,7 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 		refcount_inc(&current->sighand->count);
 		return 0;
 	}
-	sig = kmem_cache_alloc(sighand_cachep, GFP_KERNEL);
+	sig = kmem_cache_alloc(sighand_cachep, GFP_KERNEL|___GFP_CC3_EXCLUDE); // panic w/o
 	RCU_INIT_POINTER(tsk->sighand, sig);
 	if (!sig)
 		return -ENOMEM;
@@ -1757,6 +1757,11 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 
 	mutex_init(&sig->cred_guard_mutex);
 	init_rwsem(&sig->exec_update_lock);
+
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+	task_cc_conf(tsk)->initial_stack_rlimit_cur =
+		(sig->rlim + RLIMIT_STACK)->rlim_cur;
+#endif
 
 	return 0;
 }
@@ -2349,6 +2354,10 @@ static __latent_entropy struct task_struct *copy_process(
 	if (clone_flags & CLONE_THREAD) {
 		p->group_leader = current->group_leader;
 		p->tgid = current->tgid;
+#ifdef CONFIG_X86_C3_USER_SPACE
+		cc_conf_clone(task_cc_conf(p->group_leader), task_cc_conf(p),
+			      clone_flags);
+#endif
 	} else {
 		p->group_leader = p;
 		p->tgid = p->pid;

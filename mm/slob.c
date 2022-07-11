@@ -56,7 +56,12 @@
  * the freelist will only be done so on pages residing on the same node,
  * in order to prevent random node placement.
  */
-
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#define _CC_GLOBALS_NO_INCLUDES_
+#include <linux/cc_kernel_helper.h>
+//#include <linux/try_box.h>
+#include <asm/linux_cc.h> //
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
@@ -538,11 +543,19 @@ EXPORT_SYMBOL(__kmalloc_node_track_caller);
 void kfree(const void *block)
 {
 	struct folio *sp;
+	bool is_ca=false;
 
 	trace_kfree(_RET_IP_, block);
 
 	if (unlikely(ZERO_OR_NULL_PTR(block)))
 		return;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	is_ca = is_encoded_cc_ptr((uint64_t)block);
+	if (is_ca) {
+		block = (void*) cc_isa_decptr((uint64_t) block);
+		clear_icv((void*)block, ksize(block));
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	kmemleak_free(block);
 
 	sp = virt_to_folio(block);

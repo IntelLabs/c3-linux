@@ -42,6 +42,10 @@
 #include <kunit/test-bug.h>
 #include <linux/sort.h>
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#include <linux/cc_kernel_helper.h>
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 #include <linux/debugfs.h>
 #include <trace/events/kmem.h>
 
@@ -3398,6 +3402,9 @@ static void *__slab_alloc_node(struct kmem_cache *s,
 
 	object = alloc_single_from_new_slab(s, slab, orig_size);
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	object = cc3_kernel_encptr(object, max(ksize(object), orig_size), gfpflags);
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	return object;
 }
 #endif /* CONFIG_SLUB_TINY */
@@ -3445,6 +3452,9 @@ static __fastpath_inline void *slab_alloc_node(struct kmem_cache *s, struct list
 	init = slab_want_init_on_alloc(gfpflags, s);
 
 out:
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	object = cc3_kernel_encptr(object, max(ksize(object), orig_size), gfpflags);
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	/*
 	 * When init equals 'true', like for kzalloc() family, only
 	 * @orig_size bytes might be zeroed instead of s->object_size
@@ -3802,9 +3812,22 @@ void __kmem_cache_free(struct kmem_cache *s, void *x, unsigned long caller)
 
 void kmem_cache_free(struct kmem_cache *s, void *x)
 {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	bool is_ca=false;
+	is_ca = is_encoded_cc_ptr((uint64_t)x);
+
+	if (is_ca) {
+		x = (void*) cc_isa_decptr((uint64_t) x);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	s = cache_from_obj(s, x);
 	if (!s)
 		return;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	if(is_ca) {
+		clear_icv((void*)x, s->object_size);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	trace_kmem_cache_free(_RET_IP_, x, s);
 	slab_free(s, virt_to_slab(x), x, NULL, &x, 1, _RET_IP_);
 }
@@ -3892,13 +3915,32 @@ int build_detached_freelist(struct kmem_cache *s, size_t size,
 /* Note that interrupts must be enabled when calling this function. */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p)
 {
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	int i=0;
 	if (!size)
 		return;
+
+	for(i = 0; i < size; i++) {
+		if (is_encoded_cc_ptr((uint64_t)p[i])) {
+			p[i] = (void*) cc_isa_decptr((uint64_t) p[i]);
+
+			if(!s) {
+				clear_icv((void*)p[i], ksize(p[i]));
+			} else {
+				clear_icv((void*)p[i], s->object_size);
+			}
+		}
+	}
+#else // !CONFIG_X86_C3_KERNEL_SPACE
+	if (!size)
+		return;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 
 	do {
 		struct detached_freelist df;
 
 		size = build_detached_freelist(s, size, p, &df);
+
 		if (!df.slab)
 			continue;
 
@@ -4014,6 +4056,9 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 			  void **p)
 {
 	int i;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	int j;
+#endif
 	struct obj_cgroup *objcg = NULL;
 
 	if (!size)
@@ -4024,8 +4069,13 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 	if (unlikely(!s))
 		return 0;
 
-	i = __kmem_cache_alloc_bulk(s, flags, size, p, objcg);
+	i = __kmem_cache_alloc_bulk(s, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE| ___GFP_CC3_NO_COUNT, size, p, objcg);
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	for (j = 0; j < size; j++){
+		p[j] = cc3_kernel_encptr(p[j], s->object_size, flags);
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	/*
 	 * memcg and kmem_cache debug support and memory initialization.
 	 * Done outside of the IRQ disabled fastpath loop.
@@ -4297,7 +4347,7 @@ static int init_kmem_cache_nodes(struct kmem_cache *s)
 			continue;
 		}
 		n = kmem_cache_alloc_node(kmem_cache_node,
-						GFP_KERNEL, node);
+						GFP_KERNEL|___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node);
 
 		if (!n) {
 			free_kmem_cache_nodes(s);
@@ -4971,7 +5021,7 @@ static int slab_memory_callback(struct notifier_block *self,
 static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 {
 	int node;
-	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT);
+	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT|___GFP_CC3_EXCLUDE);
 	struct kmem_cache_node *n;
 
 	memcpy(s, static_cache, kmem_cache->object_size);

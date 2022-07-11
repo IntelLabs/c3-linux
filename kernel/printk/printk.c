@@ -51,6 +51,10 @@
 #include <linux/uaccess.h>
 #include <asm/sections.h>
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#include <linux/cc_kernel_helper.h>
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 #include <trace/events/initcall.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
@@ -1818,6 +1822,9 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Size of the log buffer */
 	case SYSLOG_ACTION_SIZE_BUFFER:
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+		cc3_print_alloc_stats(); // cheating, but works insert C3 stats when reading (dmesg) syslog
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 		error = log_buf_len;
 		break;
 	default:

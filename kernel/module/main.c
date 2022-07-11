@@ -58,6 +58,38 @@
 #include <uapi/linux/module.h>
 #include "internal.h"
 
+
+
+
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#ifndef _CC_GLOBALS_NO_INCLUDES_
+#define _CC_GLOBALS_NO_INCLUDES_
+#endif
+#include <linux/C3defines.h>
+#include <linux/ctype.h>
+
+#include <asm/linux_cc.h>
+
+#include <linux/cc_kernel_helper.h>
+#include <linux/C3_optin_modules.h>
+
+extern spinlock_t icv_lock_spnlock;
+static int module_name_match(const char* name1, const char* name2) {
+    int index = 0;
+    for (index = 0; index < 56; index++){
+        if (name1[index] != name2[index]) return 0;
+        if (name1[index] == 0) {
+#ifdef CC_LINUX_GLOBALS_DEBUG_MSGS
+			printk(KERN_WARNING "Found module %s in C3 globals list\n", name1);
+			MAGIC(0);
+#endif //CC_LINUX_GLOBALS_DEBUG_MSGS
+			return 1;
+		}
+    }
+    return 0; // Name longer than 56
+}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
 
@@ -2122,7 +2154,17 @@ static int move_module(struct module *mod, struct load_info *info)
 {
 	int i;
 	void *ptr;
-
+	// C3
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+	bool module_cc_enabled;
+	void* core_base_encoded;
+	void* init_base_encoded;
+	size_t total_size;
+	ptr_metadata_t ptr_metadata = {0};
+	module_cc_enabled = false;
+	core_base_encoded = NULL;
+	init_base_encoded = NULL;
+#endif //CONFIG_X86_C3_KERNEL_SPACE&&CC_LINUX_GLOBALS_ENABLE
 	/* Do the allocs. */
 	ptr = module_alloc(mod->core_layout.size);
 	/*
@@ -2172,14 +2214,141 @@ static int move_module(struct module *mod, struct load_info *info)
 
 	mod->data_layout.base = ptr;
 #endif
+
+	// C3
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+	for (i = 0; i < NUMBER_OF_C3_MODULES; i++) {
+		if (module_name_match(c3_enable_modules[i], mod->name)) {
+#ifdef CC_LINUX_GLOBALS_DEBUG_MSGS
+			printk(KERN_ALERT ">> C3: Module %s is C3-enabled\n", mod->name);
+#endif //CC_LINUX_GLOBALS_DEBUG_MSGS
+			module_cc_enabled = true;
+		}
+	}
+	if (module_cc_enabled && mod->init_layout.base == NULL) {
+		if (try_box((uint64_t) mod->core_layout.base, mod->core_layout.size, &ptr_metadata)) {
+			init_base_encoded = NULL;
+			core_base_encoded = (void*) cc_isa_encptr((uint64_t) mod->core_layout.base, &ptr_metadata);
+		}
+	}
+	if (module_cc_enabled && mod->init_layout.base != NULL) {
+		if (mod->core_layout.base < mod->init_layout.base) {
+			total_size = (mod->init_layout.base + mod->init_layout.size) - mod->core_layout.base;
+			if (try_box((uint64_t) mod->core_layout.base, total_size, &ptr_metadata)) {
+				init_base_encoded = (void*) cc_isa_encptr((uint64_t) mod->init_layout.base, &ptr_metadata);
+				core_base_encoded = (void*) cc_isa_encptr((uint64_t) mod->core_layout.base, &ptr_metadata);
+			}
+		}
+		if (mod->init_layout.base < mod->core_layout.base) {
+			total_size = (mod->core_layout.base + mod->core_layout.size) - mod->init_layout.base;
+			if (try_box((uint64_t) mod->init_layout.base, total_size, &ptr_metadata)) {
+				init_base_encoded = (void*) cc_isa_encptr((uint64_t) mod->init_layout.base, &ptr_metadata);
+				core_base_encoded = (void*) cc_isa_encptr((uint64_t) mod->core_layout.base, &ptr_metadata);
+			}
+		}
+	}
+	if (module_cc_enabled == false) {
+		init_base_encoded = mod->init_layout.base;
+		core_base_encoded = mod->core_layout.base;
+		mod->encoded_address_adjust = 0x0;
+	} else {
+		mod->encoded_address_adjust = (u64) core_base_encoded - (u64) mod->core_layout.base;
+	}
+#endif //CONFIG_X86_C3_KERNEL_SPACE&&CC_LINUX_GLOBALS_ENABLE
+
 	/* Transfer each section which specifies SHF_ALLOC */
 	pr_debug("final section addresses:\n");
 	for (i = 0; i < info->hdr->e_shnum; i++) {
 		void *dest;
 		Elf_Shdr *shdr = &info->sechdrs[i];
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+		bool encode_section;
+		char* sec_name;
+		encode_section = false;
 
+		shdr = &info->sechdrs[i];
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 		if (!(shdr->sh_flags & SHF_ALLOC))
 			continue;
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+		sec_name = info->secstrings + shdr->sh_name;
+		mod->secstrings = info->secstrings;
+		encode_section = false;
+		if (module_cc_enabled){
+			if (sec_name[1] == 'd' && sec_name[2] == 'a') {
+				encode_section = true ;// ".data"
+			}
+			if (sec_name[1] == 'r' && sec_name[2] == 'o') {
+				encode_section = true ;// ".rodata*"
+			}
+			if (sec_name[1] == 'b' && sec_name[2] == 's') {
+				encode_section = true ;// ".bss"
+			}
+
+			/*
+			if (sec_name[6] == 'd' && sec_name[7] == 'a') {
+				encode_section = true ;// ".init.data" and ".exit.data"
+			}
+
+			//NEW 
+			if (sec_name[6] == 'r' && sec_name[7] == 'o') {
+				encode_section = true ;// ".init.rodata" and ".exit.rodata"
+			}
+			if (sec_name[1] == 's' && sec_name[2] == 'm' && sec_name[3] == 'p') {
+				encode_section = true ;// ".smp_locks
+			}
+			*/
+
+			if (strcmp(".gnu.linkonce.this_module", sec_name) == 0) {
+				encode_section = true ;// .gnu.linkonce.this_module
+			}
+
+			/*
+			if (strcmp("__ex_table", sec_name) == 0) {
+				encode_section = true ;// __ex_table
+			}
+			if (strcmp("__ksymtab", sec_name) == 0) {
+				encode_section = true ;// __ksymtab
+			}
+			if (strcmp("__ksymtab_gpl", sec_name) == 0) {
+				encode_section = true ;// __ksymtab
+			}
+			if (sec_name[2] == 't' && sec_name[3] == 'r' && sec_name[4] == 'a') {
+				encode_section = true ;// "__tracepoints
+			}
+			if (sec_name[2] == 'p' && sec_name[3] == 'a' && sec_name[4] == 'r') {
+				encode_section = true ;// "__param
+			}
+			*/
+		}
+
+		if (shdr->sh_entsize & INIT_OFFSET_MASK) {
+			dest = (encode_section) ? init_base_encoded : mod->init_layout.base;
+			dest += (shdr->sh_entsize & ~INIT_OFFSET_MASK);
+		} else {
+			dest = (encode_section) ? core_base_encoded : mod->core_layout.base;
+			dest += shdr->sh_entsize;
+		}
+		clear_icv(dest, shdr->sh_size);
+		if (shdr->sh_type != SHT_NOBITS) {
+			//printk(KERN_INFO "copying %lld bytes from %lx to %lx\n", shdr->sh_size, (long)shdr->sh_addr, (long)dest);
+			//MAGIC(0);
+            memcpy(dest, (void *)shdr->sh_addr, shdr->sh_size);
+        }
+
+
+        /* Update sh_addr to point to copy in image. */
+		if (shdr->sh_entsize & INIT_OFFSET_MASK) {
+			shdr->sh_addr = (unsigned long)(mod->init_layout.base + (shdr->sh_entsize & ~INIT_OFFSET_MASK));
+		} else {
+			shdr->sh_addr = (unsigned long) (mod->core_layout.base + shdr->sh_entsize);
+		}
+#ifdef CC_LINUX_GLOBALS_DEBUG_MSGS
+			printk(KERN_ALERT "\t0x%lx %s (%Lx %Lx)\n",
+				 (long)dest, info->secstrings + shdr->sh_name, (u64)info->secstrings, (u64)shdr->sh_name);
+#endif //CC_LINUX_GLOBALS_DEBUG_MSGS
+
+#else // ! (defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE))
 
 		if (shdr->sh_entsize & INIT_OFFSET_MASK)
 			dest = mod->init_layout.base
@@ -2195,6 +2364,7 @@ static int move_module(struct module *mod, struct load_info *info)
 		shdr->sh_addr = (unsigned long)dest;
 		pr_debug("\t0x%lx %s\n",
 			 (long)shdr->sh_addr, info->secstrings + shdr->sh_name);
+#endif // defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
 	}
 
 	return 0;
@@ -2340,7 +2510,11 @@ static struct module *layout_and_allocate(struct load_info *info, int flags)
 		return ERR_PTR(err);
 
 	/* Module has been copied to its final place now: return it. */
+#if defined(CONFIG_X86_C3_KERNEL_SPACE) && defined(CC_LINUX_GLOBALS_ENABLE)
+	mod = (void *)info->sechdrs[info->index.mod].sh_addr + info->mod->encoded_address_adjust;
+#else // !CONFIG_X86_C3_KERNEL_SPACE
 	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	kmemleak_load_module(mod, info);
 	return mod;
 }

@@ -1767,7 +1767,7 @@ static struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	int err;
 
 	dentry = kmem_cache_alloc_lru(dentry_cache, &sb->s_dentry_lru,
-				      GFP_KERNEL);
+				      GFP_KERNEL|___GFP_CC3_EXCLUDE); //cannot print file content for cifs mount w/o
 	if (!dentry)
 		return NULL;
 

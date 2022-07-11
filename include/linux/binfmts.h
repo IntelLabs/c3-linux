@@ -4,6 +4,7 @@
 
 #include <linux/sched.h>
 #include <linux/unistd.h>
+#include <asm/linux_cc.h>
 #include <asm/exec.h>
 #include <uapi/linux/binfmts.h>
 
@@ -16,6 +17,11 @@ struct coredump_params;
  * This structure is used to hold the arguments that are used when loading binaries.
  */
 struct linux_binprm {
+#ifdef CONFIG_X86_C3_USER_SPACE
+	bool cc_enabled;
+	bool cc_icv_enabled;
+#endif /* CONFIG_X86_C3_USER_SPACE */
+
 #ifdef CONFIG_MMU
 	struct vm_area_struct *vma;
 	unsigned long vma_pages;

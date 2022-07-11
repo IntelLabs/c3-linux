@@ -416,7 +416,7 @@ int public_key_verify_signature(const struct public_key *pkey,
 		return PTR_ERR(tfm);
 
 	ret = -ENOMEM;
-	req = akcipher_request_alloc(tfm, GFP_KERNEL);
+	req = akcipher_request_alloc(tfm, GFP_KERNEL | ___GFP_CC3_EXCLUDE);
 	if (!req)
 		goto error_free_tfm;
 

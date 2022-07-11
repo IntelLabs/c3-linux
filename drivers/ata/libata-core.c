@@ -5335,7 +5335,7 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
 {
 	struct ata_port *ap;
 
-	ap = kzalloc(sizeof(*ap), GFP_KERNEL);
+	ap = kzalloc(sizeof(*ap), GFP_KERNEL|___GFP_CC3_EXCLUDE); //panic w/o
 	if (!ap)
 		return NULL;
 

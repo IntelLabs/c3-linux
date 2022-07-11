@@ -988,7 +988,7 @@ __releases(fiq->lock)
 	spin_unlock(&fiq->lock);
 
 	/* Allocate a buffer for the request */
-	forget = kmalloc(sizeof(*forget), GFP_NOFS | __GFP_NOFAIL);
+	forget = kmalloc(sizeof(*forget), GFP_NOFS | __GFP_NOFAIL|___GFP_CC3_EXCLUDE); // input/output error w/o
 	req = &forget->req;
 
 	req->ih = (struct fuse_in_header){

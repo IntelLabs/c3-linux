@@ -25,6 +25,17 @@
 #include <asm/setup.h>
 #include <asm/unwind.h>
 
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+
+#ifndef _CC_GLOBALS_NO_INCLUDES_
+#define _CC_GLOBALS_NO_INCLUDES_
+#endif
+#include <linux/ctype.h>
+// #include <linux/try_box.h>
+#include <asm/linux_cc.h> // #include <linux/cc_globals.h>
+
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 #if 0
 #define DEBUGP(fmt, ...)				\
 	printk(KERN_DEBUG fmt, ##__VA_ARGS__)
@@ -155,7 +166,60 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 	void *loc;
 	u64 val;
 	u64 zero = 0ULL;
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	void *new_loc;
+	void *unencoded_loc;
+	u64 new_val;
+	u64 unencoded_val;
+	bool encode_location = false;
+	bool encode_value = true;
 
+	char* sec_name = me->secstrings + sechdrs[relsec].sh_name;
+	encode_value = (me->encoded_address_adjust == 0) ? false : true;
+	if (me->encoded_address_adjust !=0 ){
+		if (sec_name[6] == 'd' && sec_name[7] == 'a') {
+			encode_location = true ;// ".data"
+		} else if (sec_name[6] == 'r' && sec_name[7] == 'o') {
+			encode_location = true ;// ".rodata*"
+		} else if (sec_name[6] == 'b' && sec_name[7] == 's') {
+			encode_location = true ;// ".bss"
+
+		/*
+		} else if (sec_name[11] == 'd' && sec_name[12] == 'a') {
+			encode_location = true ;// ".exit.data" and "init.data"
+		*/
+
+		/*
+		} else if (sec_name[11] == 'r' && sec_name[12] == 'o') {
+			encode_location = true ;// ".exit.rodata" and "init.rodata"
+		} else if (sec_name[6] == 's' && sec_name[7] == 'm' && sec_name[8] == 'p') {
+			encode_location = true ;// ".smp_locks"
+			//encode_value = false;
+		} else if (sec_name[7] == 'p' && sec_name[8] == 'a' && sec_name[9] == 'r') {
+			encode_location = true ;// "__param"
+			//encode_value = false;
+		*/
+		} else if (sec_name[7] == 'p' && sec_name[8] == 'a' && sec_name[9] == 'r') {
+			encode_value = false ;// "__param"
+		} else if (sec_name[7] == 't' && sec_name[8] == 'r' && sec_name[9] == 'a') {
+			encode_value = false ;// "__tracepoints"
+		} else if (sec_name[7] == 'm' && sec_name[8] == 'c') {
+			encode_value = false; // "__mcount_loc". Disabling ponter encoding for ftrace
+		}
+
+		// Make sure this_module always uses the CA (also outside the module)
+		// otherwise the data will be scrambled
+		if (strcmp(".gnu.linkonce.this_module", sec_name + 5) == 0) {
+				encode_location = true ;// .gnu.linkonce.this_module
+		}
+
+		/*
+		if (strcmp("__ex_table", sec_name + 5) == 0) {
+				encode_location = true ;// __ex_table
+		}
+		*/
+	}
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 	DEBUGP("%s relocate section %u to %u\n",
 	       apply ? "Applying" : "Clearing",
 	       relsec, sechdrs[relsec].sh_info);
@@ -176,7 +240,22 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 		       sym->st_value, rel[i].r_addend, (u64)loc);
 
 		val = sym->st_value + rel[i].r_addend;
-
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+		new_val = val;
+		if (ELF64_R_TYPE(rel[i].r_info) == R_X86_64_PLT32) {
+			encode_value = false;
+		}
+		if (encode_value) {
+			new_val += me->encoded_address_adjust;
+		}
+		new_loc = loc;
+		if (encode_location)
+			new_loc = (void*) ((u64)loc + me->encoded_address_adjust);
+		unencoded_loc = loc;
+		unencoded_val = val;
+		loc = new_loc;
+		val = new_val;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 		switch (ELF64_R_TYPE(rel[i].r_info)) {
 		case R_X86_64_NONE:
 			continue;  /* nothing to write */
@@ -184,6 +263,9 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 			size = 8;
 			break;
 #ifndef CONFIG_X86_PIE
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+		BUILD_ASSERT(0); //ERROR: compiling without CONFIG_X86_PIE
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 		case R_X86_64_32:
 			if (val != *(u32 *)&val)
 				goto overflow;
@@ -203,11 +285,19 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 #endif
 		case R_X86_64_PC32:
 		case R_X86_64_PLT32:
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+			val = unencoded_val - (u64) unencoded_loc;
+#else // !CONFIG_X86_C3_KERNEL_SPACE
 			val -= (u64)loc;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 			size = 4;
 			break;
 		case R_X86_64_PC64:
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+			val = unencoded_val - (u64) unencoded_loc;
+#else // !CONFIG_X86_C3_KERNEL_SPACE
 			val -= (u64)loc;
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 			size = 8;
 			break;
 		default:

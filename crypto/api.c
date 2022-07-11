@@ -500,7 +500,7 @@ void *crypto_create_tfm_node(struct crypto_alg *alg,
 	tfmsize = frontend->tfmsize;
 	total = tfmsize + sizeof(*tfm) + frontend->extsize(alg);
 
-	mem = kzalloc_node(total, GFP_KERNEL, node);
+	mem = kzalloc_node(total, GFP_KERNEL | ___GFP_CC3_EXCLUDE, node);
 	if (mem == NULL)
 		goto out_err;
 

@@ -38,6 +38,7 @@
 #include <linux/rv.h>
 #include <linux/livepatch_sched.h>
 #include <asm/kmap_size.h>
+#include <asm/linux_cc.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;

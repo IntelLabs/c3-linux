@@ -49,6 +49,7 @@
 #include <linux/rseq.h>
 #include <asm/param.h>
 #include <asm/page.h>
+#include <uapi/asm-generic/resource.h>
 
 #ifndef ELF_COMPAT
 #define ELF_COMPAT 0
@@ -1622,6 +1623,23 @@ static void fill_auxv_note(struct memelfnote *note, struct mm_struct *mm)
 	fill_note(note, "CORE", NT_AUXV, i * sizeof(elf_addr_t), auxv);
 }
 
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+static void fill_c3_note(struct memelfnote *note)
+{
+	const size_t size = sizeof(cc_core_info_t);
+	struct rlimit *rlimit_stack = current->signal->rlim + RLIMIT_STACK;
+	cc_core_info_t *info = (cc_core_info_t *)kmalloc(size, GFP_KERNEL);
+	memset(info, 0, size);
+
+	memcpy(&info->cc_context, task_cc_context_raw(current),
+	       sizeof(cc_context_t));
+
+	info->stack_rlimit_cur = rlimit_stack->rlim_cur;
+
+	fill_note(note, "C3", NT_C3_CTX, size, info);
+}
+#endif
+
 static void fill_siginfo_note(struct memelfnote *note, user_siginfo_t *csigdata,
 		const kernel_siginfo_t *siginfo)
 {
@@ -1738,6 +1756,9 @@ struct elf_note_info {
 	struct memelfnote signote;
 	struct memelfnote auxv;
 	struct memelfnote files;
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+	struct memelfnote c3;
+#endif
 	user_siginfo_t csigdata;
 	size_t size;
 	int thread_notes;
@@ -1943,6 +1964,11 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	if (fill_files_note(&info->files, cprm) == 0)
 		info->size += notesize(&info->files);
 
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+	fill_c3_note(&info->c3);
+	info->size += notesize(&info->c3);
+#endif
+
 	return 1;
 }
 
@@ -1971,6 +1997,10 @@ static int write_note_info(struct elf_note_info *info,
 		if (first && info->files.data &&
 				!writenote(&info->files, cprm))
 			return 0;
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+		if (first && !writenote(&info->c3, cprm))
+			return 0;
+#endif
 
 		for (i = 1; i < info->thread_notes; ++i)
 			if (t->notes[i].data &&
@@ -1998,6 +2028,9 @@ static void free_note_info(struct elf_note_info *info)
 	}
 	kfree(info->psinfo.data);
 	kvfree(info->files.data);
+#if defined(CONFIG_X86_C3_USER_SPACE) && defined(CC_COREDUMP_SUPPORT)
+	kvfree(info->c3.data);
+#endif
 }
 
 static void fill_extnum_info(struct elfhdr *elf, struct elf_shdr *shdr4extnum,

@@ -31,7 +31,7 @@ typedef unsigned int __bitwise gfp_t;
 #define ___GFP_IO		0x40u
 #define ___GFP_FS		0x80u
 #define ___GFP_ZERO		0x100u
-/* 0x200u unused */
+/* 0x200u unused , CC3 ill take it*/
 #define ___GFP_DIRECT_RECLAIM	0x400u
 #define ___GFP_KSWAPD_RECLAIM	0x800u
 #define ___GFP_WRITE		0x1000u
@@ -46,6 +46,17 @@ typedef unsigned int __bitwise gfp_t;
 #define ___GFP_THISNODE		0x200000u
 #define ___GFP_ACCOUNT		0x400000u
 #define ___GFP_ZEROTAGS		0x800000u
+
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+#define ___GFP_CC3_INCLUDE	   0x8000000u
+#define ___GFP_CC3_EXCLUDE	   0x10000000u
+#define ___GFP_CC3_NO_COUNT	   0x00000200u
+#else // !CONFIG_X86_C3_KERNEL_SPACE
+#define ___GFP_CC3_INCLUDE	   0
+#define ___GFP_CC3_EXCLUDE	   0
+#define ___GFP_CC3_NO_COUNT	   0
+#endif // CONFIG_X86_C3_KERNEL_SPACE
+
 #ifdef CONFIG_KASAN_HW_TAGS
 #define ___GFP_SKIP_ZERO		0x1000000u
 #define ___GFP_SKIP_KASAN_UNPOISON	0x2000000u
@@ -252,7 +263,11 @@ typedef unsigned int __bitwise gfp_t;
 #define __GFP_NOLOCKDEP ((__force gfp_t)___GFP_NOLOCKDEP)
 
 /* Room for N __GFP_FOO bits */
-#define __GFP_BITS_SHIFT (27 + IS_ENABLED(CONFIG_LOCKDEP))
+#ifdef CONFIG_X86_C3_KERNEL_SPACE
+	#define __GFP_BITS_SHIFT (29 + IS_ENABLED(CONFIG_LOCKDEP))
+#else // !CONFIG_X86_C3_KERNEL_SPACE
+	#define __GFP_BITS_SHIFT (27 + IS_ENABLED(CONFIG_LOCKDEP))
+#endif // CONFIG_X86_C3_KERNEL_SPACE
 #define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
 
 /**

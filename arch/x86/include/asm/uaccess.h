@@ -11,6 +11,7 @@
 #include <linux/string.h>
 #include <linux/mmap_lock.h>
 #include <asm/asm.h>
+#include <asm/linux_cc.h>
 #include <asm/page.h>
 #include <asm/smap.h>
 #include <asm/extable.h>
@@ -24,7 +25,7 @@ static inline bool pagefault_disabled(void);
 # define WARN_ON_IN_IRQ()
 #endif
 
-#ifdef CONFIG_ADDRESS_MASKING
+#if defined(CONFIG_ADDRESS_MASKING) || defined(CONFIG_X86_C3_USER_SPACE)
 /*
  * Mask out tag bits from the address.
  *
@@ -33,8 +34,17 @@ static inline bool pagefault_disabled(void);
  */
 static inline unsigned long __untagged_addr(unsigned long addr)
 {
+#ifdef CONFIG_ADDRESS_MASKING
 	long sign;
+#endif
 
+#ifdef CONFIG_X86_C3_USER_SPACE
+	if (is_encoded_cc_ptr((__force u64)(addr))) {
+		addr = cc_isa_decptr((__force u64)(addr));
+	}
+#endif
+
+#ifdef CONFIG_ADDRESS_MASKING
 	/*
 	 * Refer tlbstate_untag_mask directly to avoid RIP-relative relocation
 	 * in alternative instructions. The relocation gets wrong when gets
@@ -46,6 +56,7 @@ static inline unsigned long __untagged_addr(unsigned long addr)
 			 "and %[sign], %[addr]\n\t", X86_FEATURE_LAM)
 	     : [addr] "+r" (addr), [sign] "=r" (sign)
 	     : "m" (tlbstate_untag_mask), "[sign]" (addr));
+#endif
 
 	return addr;
 }
@@ -58,10 +69,22 @@ static inline unsigned long __untagged_addr(unsigned long addr)
 static inline unsigned long __untagged_addr_remote(struct mm_struct *mm,
 						   unsigned long addr)
 {
+#ifdef CONFIG_ADDRESS_MASKING
+	long sign = addr >> 63;
+#endif
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+	if (is_encoded_cc_ptr((__force u64)(addr))) {
+		addr = cc_isa_decptr((__force u64)(addr));
+	}
+#endif
+
+#ifdef CONFIG_ADDRESS_MASKING
 	long sign = addr >> 63;
 
 	mmap_assert_locked(mm);
 	addr &= (mm)->context.untag_mask | sign;
+#endif
 
 	return addr;
 }

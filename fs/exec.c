@@ -69,6 +69,7 @@
 #include <linux/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/tlb.h>
+#include <asm/linux_cc.h>
 
 #include <trace/events/task.h>
 #include "internal.h"
@@ -606,6 +607,54 @@ out:
 	}
 	return ret;
 }
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+static int check_cc_envp(int argc, struct user_arg_ptr argv,
+                         struct linux_binprm *bprm) {
+	int ret;
+	const char __user *str = NULL;
+	int len;
+	bprm->cc_enabled = false;
+	bprm->cc_icv_enabled = false;
+
+
+
+	if (argc > 0) {
+		ret = -EFAULT;
+	}
+
+	for (argc = argc -1; argc >= 0; --argc) {
+		str = get_user_arg_ptr(argv, argc);
+		if (IS_ERR(str))
+			goto out;
+
+		len = strnlen_user(str, MAX_ARG_STRLEN);
+		if (!len)
+			goto out;
+
+		ret = -E2BIG;
+		if (!valid_arg_len(bprm, len))
+			goto out;
+
+		ret = 0;
+
+		if(strstr(str, "CC_ENABLED=1")) {
+			printk(KERN_NOTICE "Detected CC_ENABLED=1 flag on exec");
+			bprm->cc_enabled = true;
+		}
+
+		if (strstr(str, "CC_ICV_ENABLED=1")) {
+			printk(KERN_NOTICE
+			       "Detected CC_ICV_ENABLED=1 flag on exec");
+			bprm->cc_icv_enabled = true;
+		}
+
+
+	}
+out:
+	return ret;
+}
+#endif /* CONFIG_X86_C3_USER_SPACE */
 
 /*
  * Copy and argument/environment string from the kernel to the processes stack.
@@ -1858,6 +1907,11 @@ static int bprm_execve(struct linux_binprm *bprm,
 	/* execve succeeded */
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+	cc_conf_init(task_cc_conf(current), bprm);
+#endif /* CONFIG_X86_C3_USER_SPACE */
+
 	rseq_execve(current);
 	acct_update_integrals(current);
 	task_numa_free(current, false);
@@ -1956,6 +2010,12 @@ static int do_execveat_common(int fd, struct filename *filename,
 			goto out_free;
 		bprm->argc = 1;
 	}
+
+#ifdef CONFIG_X86_C3_USER_SPACE
+	retval = check_cc_envp(bprm->envc, envp, bprm);
+	if (retval < 0)
+		goto out_free;
+#endif
 
 	retval = bprm_execve(bprm, fd, filename, flags);
 out_free:
