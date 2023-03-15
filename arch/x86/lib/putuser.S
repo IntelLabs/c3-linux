@@ -17,7 +17,15 @@
 #include <asm/asm.h>
 #include <asm/smap.h>
 #include <asm/export.h>
+#include <asm/cc.h>
 
+#ifndef CONFIG_X86_CC /* FIXME: Make this a proper kernel config */
+#define CONFIG_X86_CC
+#endif /* CONFIG_X86_CC */
+
+/* FIXME: Fix put_user check properly (conf to enable CC after init?) */
+#undef CONFIG_X86_CC
+#define CC_DISABLE_PUT_USER_CHECK
 
 /*
  * __put_user_X
@@ -28,6 +36,7 @@
  * Outputs:	%ecx is error code (0 or -EFAULT)
  *
  * Clobbers:	%ebx needed for task pointer
+ *          	%edx to store decrypted ptr
  *
  * These functions should not modify any other registers,
  * as they get called from within inline assembly.
@@ -44,9 +53,18 @@
 
 .text
 SYM_FUNC_START(__put_user_1)
+#ifdef CONFIG_X86_CC
+	mov %_ASM_CX, %_ASM_DX
+	CC_DECRYPT_CA_RDX
+	LOAD_TASK_SIZE_MINUS_N(0)
+	cmp %_ASM_BX,%_ASM_DX
+#else /* CONFIG_X86_CC */
 	LOAD_TASK_SIZE_MINUS_N(0)
 	cmp %_ASM_BX,%_ASM_CX
+#endif /* !CONFIG_X86_CC */
+#ifndef CC_DISABLE_PUT_USER_CHECK
 	jae .Lbad_put_user
+#endif /* CC_DISABLE_PUT_USER_CHECK */
 SYM_INNER_LABEL(__put_user_nocheck_1, SYM_L_GLOBAL)
 	ASM_STAC
 1:	movb %al,(%_ASM_CX)
@@ -58,9 +76,18 @@ EXPORT_SYMBOL(__put_user_1)
 EXPORT_SYMBOL(__put_user_nocheck_1)
 
 SYM_FUNC_START(__put_user_2)
+#ifdef CONFIG_X86_CC
+	mov %_ASM_CX, %_ASM_DX
+	CC_DECRYPT_CA_RDX
+	LOAD_TASK_SIZE_MINUS_N(1)
+	cmp %_ASM_BX,%_ASM_DX
+#else /* CONFIG_X86_CC */
 	LOAD_TASK_SIZE_MINUS_N(1)
 	cmp %_ASM_BX,%_ASM_CX
+#endif /* !CONFIG_X86_CC */
+#ifndef CC_DISABLE_PUT_USER_CHECK
 	jae .Lbad_put_user
+#endif /* CC_DISABLE_PUT_USER_CHECK */
 SYM_INNER_LABEL(__put_user_nocheck_2, SYM_L_GLOBAL)
 	ASM_STAC
 2:	movw %ax,(%_ASM_CX)
@@ -72,9 +99,18 @@ EXPORT_SYMBOL(__put_user_2)
 EXPORT_SYMBOL(__put_user_nocheck_2)
 
 SYM_FUNC_START(__put_user_4)
+#ifdef CONFIG_X86_CC
+	mov %_ASM_CX, %_ASM_DX
+	CC_DECRYPT_CA_RDX
+	LOAD_TASK_SIZE_MINUS_N(3)
+	cmp %_ASM_BX,%_ASM_DX
+#else /* CONFIG_X86_CC */
 	LOAD_TASK_SIZE_MINUS_N(3)
 	cmp %_ASM_BX,%_ASM_CX
+#endif /* !CONFIG_X86_CC */
+#ifndef CC_DISABLE_PUT_USER_CHECK
 	jae .Lbad_put_user
+#endif /* CC_DISABLE_PUT_USER_CHECK */
 SYM_INNER_LABEL(__put_user_nocheck_4, SYM_L_GLOBAL)
 	ASM_STAC
 3:	movl %eax,(%_ASM_CX)
@@ -86,9 +122,18 @@ EXPORT_SYMBOL(__put_user_4)
 EXPORT_SYMBOL(__put_user_nocheck_4)
 
 SYM_FUNC_START(__put_user_8)
+#ifdef CONFIG_X86_CC
+	mov %_ASM_CX, %_ASM_DX
+	CC_DECRYPT_CA_RDX
+	LOAD_TASK_SIZE_MINUS_N(7)
+	cmp %_ASM_BX,%_ASM_DX
+#else /* CONFIG_X86_CC */
 	LOAD_TASK_SIZE_MINUS_N(7)
 	cmp %_ASM_BX,%_ASM_CX
+#endif /* !CONFIG_X86_CC */
+#ifndef CC_DISABLE_PUT_USER_CHECK
 	jae .Lbad_put_user
+#endif /* CC_DISABLE_PUT_USER_CHECK */
 SYM_INNER_LABEL(__put_user_nocheck_8, SYM_L_GLOBAL)
 	ASM_STAC
 4:	mov %_ASM_AX,(%_ASM_CX)

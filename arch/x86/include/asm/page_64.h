@@ -89,6 +89,22 @@ static __always_inline unsigned long task_size_max(void)
 }
 #endif	/* CONFIG_X86_5LEVEL */
 
+#include "cc.h"
+
+#define untagged_addr(addr) ({ 					\
+	u64 __addr = (__force u64)(addr); 				\
+	if (cc_is_encoded_pointer((__force u64)(addr))) { 		\
+		__addr &= cc_decrypt_pointer((__force u64)(addr));	\
+	} 								\
+	(__force __typeof__(addr))__addr; 				\
+})
+
+#define untagged_ptr(ptr) ({		\
+       u64 __ptrval = (__force u64)(ptr);     	\
+       __ptrval = untagged_addr(__ptrval);	\
+       (__force __typeof__(*(ptr)) *)__ptrval;	\
+})
+
 #endif	/* !__ASSEMBLY__ */
 
 #ifdef CONFIG_X86_VSYSCALL_EMULATION

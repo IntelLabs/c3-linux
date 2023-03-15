@@ -39,7 +39,9 @@
 #include <linux/io.h>
 #include <linux/ftrace.h>
 #include <linux/syscalls.h>
+#include <linux/random.h>
 
+#include <asm/cc.h>
 #include <asm/processor.h>
 #include <asm/pkru.h>
 #include <asm/fpu/internal.h>
@@ -55,6 +57,7 @@
 #include <asm/resctrl.h>
 #include <asm/unistd.h>
 #include <asm/fsgsbase.h>
+#include <asm/cc.h>
 #ifdef CONFIG_IA32_EMULATION
 /* Not included via unistd.h */
 #include <asm/unistd_32_ia32.h>
@@ -568,6 +571,13 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	if (!test_thread_flag(TIF_NEED_FPU_LOAD))
 		switch_fpu_prepare(prev_fpu, cpu);
 
+	if (cc_context_is_enabled(&prev_p->cc_context)) {
+		cc_save_context(&prev_p->cc_context);
+		cc_load_context(&next_p->cc_context);
+	} else if (cc_context_is_enabled(&next_p->cc_context)) {
+		cc_load_context(&next_p->cc_context);
+	}
+
 	/* We must save %fs and %gs before load_TLS() because
 	 * %fs and %gs may be cleared by load_TLS().
 	 *
@@ -860,4 +870,44 @@ COMPAT_SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
 unsigned long KSTK_ESP(struct task_struct *task)
 {
 	return task_pt_regs(task)->sp;
+}
+
+void cc_init_context(cc_context_t *ctx) {
+	static const cc_data_key_bytes_t fixed_data_key = DEF_ADDR_KEY_BYTES;
+	static const cc_addr_key_bytes_t fixed_addr_key = DEF_DATA_KEY_BYTES;
+
+	if (cc_context_cc_enabled(&current->cc_context))
+		printk(KERN_NOTICE "Enabling CC for process\n");
+
+
+
+
+
+
+
+	printk(KERN_NOTICE "Setting random data keys\n");
+
+	get_random_bytes(&ctx->ctx_raw.p_key_bytes, CC_DATA_KEY_SIZE);
+
+	// NOTE: Currently setting fixed keys for all expect private key
+	//
+	// get_random_bytes(&ctx->ctx_raw.s_key_bytes, CC_DATA_KEY_SIZE);
+	// get_random_bytes(&ctx->ctx_raw.c_key_bytes, CC_DATA_KEY_SIZE);
+	// get_random_bytes(&ctx->ctx_raw.a_key_bytes, CC_POINTER_KEY_SIZE);
+	//
+	memcpy(&ctx->ctx_raw.s_key_bytes, fixed_data_key, CC_DATA_KEY_SIZE);
+	memcpy(&ctx->ctx_raw.c_key_bytes, fixed_data_key, CC_DATA_KEY_SIZE);
+	memcpy(&ctx->ctx_raw.a_key_bytes, fixed_addr_key, CC_ADDR_KEY_SIZE);
+}
+
+void cc_clone_context(const cc_context_t *parent,
+                      cc_context_t *ctx,
+                      uint64_t clone_flags) {
+	cc_context_dump_ctx(parent, "Cloning CC context ");
+	cc_context_dump_ctx(ctx, "                   ");
+
+	memcpy(ctx, parent, sizeof(cc_context_t));
+
+
+
 }

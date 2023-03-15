@@ -243,6 +243,14 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
 	bool entering_altstack = false;
 	unsigned long math_size = 0;
 	unsigned long sp = regs->sp;
+#ifdef CONFIG_X86_CC
+	if (cc_is_encoded_pointer(sp)) {
+		const unsigned long new_sp = cc_decrypt_pointer(sp);
+		printk("decoded sp for get_sigframe 0x%016lx", sp);
+		printk("                       ->   0x%016lx", new_sp);
+		sp = new_sp;
+	}
+#endif
 	unsigned long buf_fx = 0;
 	int ret;
 

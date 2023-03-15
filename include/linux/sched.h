@@ -35,6 +35,7 @@
 #include <linux/seqlock.h>
 #include <linux/kcsan.h>
 #include <asm/kmap_size.h>
+#include <asm/cc.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -740,6 +741,10 @@ struct task_struct {
 	 * scheduling-critical items should be added above here.
 	 */
 	randomized_struct_fields_start
+
+#ifdef CONFIG_X86_CC
+	cc_context_t   cc_context;
+#endif /* CONFIG_X86_CC */
 
 	void				*stack;
 	refcount_t			usage;

@@ -69,7 +69,7 @@ static inline bool pagefault_disabled(void);
 #define access_ok(addr, size)					\
 ({									\
 	WARN_ON_IN_IRQ();						\
-	likely(!__range_not_ok(addr, size, TASK_SIZE_MAX));		\
+	likely(!__range_not_ok(untagged_addr(addr), size, TASK_SIZE_MAX));		\
 })
 
 extern int __get_user_1(void);
@@ -228,7 +228,7 @@ extern void __put_user_nocheck_8(void);
 		     : "0" (__ptr_pu),					\
 		       "r" (__val_pu),					\
 		       [size] "i" (sizeof(*(ptr)))			\
-		     :"ebx");						\
+		     :"ebx", "edx");					\
 	__builtin_expect(__ret_pu, 0);					\
 })
 

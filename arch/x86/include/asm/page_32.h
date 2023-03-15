@@ -44,6 +44,9 @@ static inline void copy_page(void *to, void *from)
 	memcpy(to, from, PAGE_SIZE);
 }
 #endif	/* CONFIG_X86_3DNOW */
-#endif	/* !__ASSEMBLY__ */
 
+#define untagged_addr(addr) (addr)
+#define untagged_ptr(ptr) (ptr)
+
+#endif	/* !__ASSEMBLY__ */
 #endif /* _ASM_X86_PAGE_32_H */

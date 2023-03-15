@@ -2268,6 +2268,8 @@ static __latent_entropy struct task_struct *copy_process(
 	if (clone_flags & CLONE_THREAD) {
 		p->group_leader = current->group_leader;
 		p->tgid = current->tgid;
+		cc_clone_context(
+			&p->group_leader->cc_context, &p->cc_context, clone_flags);
 	} else {
 		p->group_leader = p;
 		p->tgid = p->pid;
