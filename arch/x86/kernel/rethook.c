@@ -27,7 +27,15 @@ asm(
 #ifdef CONFIG_X86_64
 	ANNOTATE_NOENDBR	/* This is only jumped from ret instruction */
 	/* Push a fake return address to tell the unwinder it's a rethook. */
+#ifdef CONFIG_X86_PIE
+	"	pushq $0\n"
+	"	pushq %rdi\n"
+	"	leaq arch_rethook_trampoline(%rip), %rdi\n"
+	"	movq %rdi, 8(%rsp)\n"
+	"	popq %rdi\n"
+#else
 	"	pushq $arch_rethook_trampoline\n"
+#endif
 	UNWIND_HINT_FUNC
 	"       pushq $" __stringify(__KERNEL_DS) "\n"
 	/* Save the 'sp - 16', this will be fixed later. */
