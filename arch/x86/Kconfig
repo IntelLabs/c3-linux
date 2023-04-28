@@ -2635,7 +2635,7 @@ config CPU_UNRET_ENTRY
 
 config CALL_DEPTH_TRACKING
 	bool "Mitigate RSB underflow with call depth tracking"
-	depends on CPU_SUP_INTEL && HAVE_CALL_THUNKS
+	depends on CPU_SUP_INTEL && HAVE_CALL_THUNKS && !X86_PIE
 	select HAVE_DYNAMIC_FTRACE_NO_PATCHABLE
 	select CALL_THUNKS
 	default y
