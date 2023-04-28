@@ -315,7 +315,14 @@ STACK_FRAME_NON_STANDARD_FP(ftrace_regs_caller)
 SYM_FUNC_START(__fentry__)
 	CALL_DEPTH_ACCOUNT
 
+#ifdef CONFIG_X86_PIE
+	pushq %r8
+	leaq ftrace_stub(%rip), %r8
+	cmpq %r8, ftrace_trace_function(%rip)
+	popq %r8
+#else
 	cmpq $ftrace_stub, ftrace_trace_function
+#endif
 	jnz trace
 	RET
 
@@ -329,7 +336,7 @@ trace:
 	 * ip and parent ip are used and the list function is called when
 	 * function tracing is enabled.
 	 */
-	movq ftrace_trace_function, %r8
+	movq ftrace_trace_function(%rip), %r8
 	CALL_NOSPEC r8
 	restore_mcount_regs
 
