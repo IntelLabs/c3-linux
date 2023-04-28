@@ -131,6 +131,27 @@ static struct instruction *prev_insn_same_sym(struct objtool_file *file,
 	for (insn = next_insn_same_sec(file, insn); insn;		\
 	     insn = next_insn_same_sec(file, insn))
 
+static struct instruction *find_insn_containing(struct objtool_file *file,
+						struct section *sec,
+						unsigned long offset)
+{
+	struct instruction *insn;
+
+	insn = find_insn(file, sec, 0);
+	if (!insn)
+		return NULL;
+
+	sec_for_each_insn_from(file, insn) {
+		if (insn->offset > offset)
+			return NULL;
+		if (insn->offset <= offset && (insn->offset + insn->len) > offset)
+			return insn;
+	}
+
+	return NULL;
+}
+
+
 static inline struct symbol *insn_call_dest(struct instruction *insn)
 {
 	if (insn->type == INSN_JUMP_DYNAMIC ||
@@ -4529,6 +4550,61 @@ static int validate_reachable_instructions(struct objtool_file *file)
 	return 0;
 }
 
+static int is_in_pvh_code(struct instruction *insn)
+{
+	struct symbol *sym = insn->sym;
+
+	return sym && !strcmp(sym->name, "pvh_start_xen");
+}
+
+static int validate_pie(struct objtool_file *file)
+{
+	struct section *sec;
+	struct reloc *reloc;
+	struct instruction *insn;
+	int warnings = 0;
+
+	for_each_sec(file, sec) {
+		if (!sec->reloc)
+			continue;
+		if (!(sec->sh.sh_flags & SHF_ALLOC))
+			continue;
+
+		list_for_each_entry(reloc, &sec->reloc->reloc_list, list) {
+			switch (reloc->type) {
+			case R_X86_64_NONE:
+			case R_X86_64_PC32:
+			case R_X86_64_PLT32:
+			case R_X86_64_64:
+			case R_X86_64_PC64:
+			case R_X86_64_GOTPCREL:
+				break;
+			case R_X86_64_32:
+			case R_X86_64_32S:
+				insn = find_insn_containing(file, sec, reloc->offset);
+				if (!insn) {
+					WARN("can't find relocate insn near %s+0x%lx",
+					     sec->name, reloc->offset);
+				} else {
+					if (is_in_pvh_code(insn))
+						break;
+					WARN("insn at %s+0x%lx is not compatible with PIE",
+					     sec->name, insn->offset);
+				}
+				warnings++;
+				break;
+			default:
+				WARN("unexpected relocation type %d at %s+0x%lx",
+				     reloc->type, sec->name, reloc->offset);
+				warnings++;
+				break;
+			}
+		}
+	}
+
+	return warnings;
+}
+
 int check(struct objtool_file *file)
 {
 	int ret, warnings = 0;
@@ -4673,6 +4749,12 @@ int check(struct objtool_file *file)
 		warnings += ret;
 	}
 
+	if (opts.pie) {
+		ret = validate_pie(file);
+		if (ret < 0)
+			return ret;
+		warnings += ret;
+	}
 
 	if (opts.stats) {
 		printf("nr_insns_visited: %ld\n", nr_insns_visited);
