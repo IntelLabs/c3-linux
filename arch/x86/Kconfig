@@ -2225,6 +2225,7 @@ config X86_PIE
 	def_bool n
 	depends on X86_64
 	select OBJTOOL if HAVE_OBJTOOL
+	select DYNAMIC_FTRACE if FUNCTION_TRACER && RETPOLINE
 
 config RANDOMIZE_BASE
 	bool "Randomize the address of the kernel image (KASLR)"
