@@ -239,8 +239,18 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	}
 
 	pud = fixup_pointer(&level3_kernel_pgt, physaddr);
-	pud[510] += load_delta;
-	pud[511] += load_delta;
+	if (IS_ENABLED(CONFIG_X86_PIE)) {
+		pud[510] = 0;
+		pud[511] = 0;
+
+		i = pud_index(text_base);
+		pgtable_flags = _KERNPG_TABLE_NOENC - __START_KERNEL_map + load_delta;
+		pud[i] = pgtable_flags + SYM_ABS_VAL(level2_kernel_pgt);
+		pud[i + 1] = pgtable_flags + SYM_ABS_VAL(level2_fixmap_pgt);
+	} else {
+		pud[510] += load_delta;
+		pud[511] += load_delta;
+	}
 
 	pmd = fixup_pointer(level2_fixmap_pgt, physaddr);
 	for (i = FIXMAP_PMD_TOP; i > FIXMAP_PMD_TOP - FIXMAP_PMD_NUM; i--)
