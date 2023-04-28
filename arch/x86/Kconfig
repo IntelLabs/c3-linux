@@ -410,6 +410,18 @@ config CC_HAS_SANE_STACKPROTECTOR
 	  the compiler produces broken code or if it does not let us control
 	  the segment on 32-bit kernels.
 
+config CC_HAS_CUSTOMIZED_STACKPROTECTOR
+	bool
+	# Although clang supports -mstack-protector-guard-reg option, it
+	# would generate GOT reference for __stack_chk_guard even with
+	# -fno-PIE flag.
+	default y if (!CC_IS_CLANG && $(cc-option,-mstack-protector-guard-reg=gs))
+
+config STACKPROTECTOR_FIXED
+	bool
+	depends on X86_64 && STACKPROTECTOR
+	default !CC_HAS_CUSTOMIZED_STACKPROTECTOR
+
 menu "Processor type and features"
 
 config SMP
