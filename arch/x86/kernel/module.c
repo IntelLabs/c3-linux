@@ -129,6 +129,18 @@ int apply_relocate(Elf32_Shdr *sechdrs,
 	return 0;
 }
 #else /*X86_64*/
+#ifdef CONFIG_X86_PIE
+static u64 find_got_kernel_entry(Elf64_Sym *sym, const Elf64_Rela *rela)
+{
+	u64 *pos;
+
+	for (pos = (u64 *)__start_got; pos < (u64 *)__end_got; pos++)
+		if (*pos == sym->st_value)
+			return (u64)pos + rela->r_addend;
+	return 0;
+}
+#endif
+
 static int __write_relocate_add(Elf64_Shdr *sechdrs,
 		   const char *strtab,
 		   unsigned int symindex,
@@ -171,6 +183,7 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 		case R_X86_64_64:
 			size = 8;
 			break;
+#ifndef CONFIG_X86_PIE
 		case R_X86_64_32:
 			if (val != *(u32 *)&val)
 				goto overflow;
@@ -181,6 +194,13 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 				goto overflow;
 			size = 4;
 			break;
+#else
+		case R_X86_64_GOTPCREL:
+			val = find_got_kernel_entry(sym, rel);
+			if (!val)
+				goto unexpected_got_reference;
+			fallthrough;
+#endif
 		case R_X86_64_PC32:
 		case R_X86_64_PLT32:
 			val -= (u64)loc;
@@ -214,11 +234,18 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 	}
 	return 0;
 
+#ifdef CONFIG_X86_PIE
+unexpected_got_reference:
+	pr_err("Target got entry doesn't exist in kernel got, loc %p\n", loc);
+	return -ENOEXEC;
+#else
 overflow:
 	pr_err("overflow in relocation type %d val %Lx\n",
 	       (int)ELF64_R_TYPE(rel[i].r_info), val);
 	pr_err("`%s' likely not compiled with -mcmodel=kernel\n",
 	       me->name);
+#endif
+
 	return -ENOEXEC;
 }
 
