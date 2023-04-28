@@ -86,10 +86,22 @@ static struct desc_ptr startup_gdt_descr = {
 
 #define __head	__section(".head.text")
 
+#ifdef CONFIG_X86_PIE
+#define SYM_ABS_VAL(sym)	\
+	({ static unsigned long __initdata __##sym = (unsigned long)sym; __##sym; })
+
+static void __head *fixup_pointer(void *ptr, unsigned long physaddr)
+{
+	return ptr;
+}
+#else
+#define SYM_ABS_VAL(sym) ((unsigned long)sym)
+
 static void __head *fixup_pointer(void *ptr, unsigned long physaddr)
 {
 	return ptr - (void *)_text + (void *)physaddr;
 }
+#endif /* CONFIG_X86_PIE */
 
 static unsigned long __head *fixup_long(void *ptr, unsigned long physaddr)
 {
@@ -142,8 +154,8 @@ static unsigned long __head sme_postprocess_startup(struct boot_params *bp, pmdv
 	 * attribute.
 	 */
 	if (sme_get_me_mask()) {
-		vaddr = (unsigned long)__start_bss_decrypted;
-		vaddr_end = (unsigned long)__end_bss_decrypted;
+		vaddr = SYM_ABS_VAL(__start_bss_decrypted);
+		vaddr_end = SYM_ABS_VAL(__end_bss_decrypted);
 
 		for (; vaddr < vaddr_end; vaddr += PMD_SIZE) {
 			/*
@@ -189,6 +201,8 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	bool la57;
 	int i;
 	unsigned int *next_pgt_ptr;
+	unsigned long text_base = SYM_ABS_VAL(_text);
+	unsigned long end_base = SYM_ABS_VAL(_end);
 
 	la57 = check_la57_support(physaddr);
 
@@ -200,7 +214,7 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	 * Compute the delta between the address I am compiled to run at
 	 * and the address I am actually running at.
 	 */
-	load_delta = physaddr - (unsigned long)(_text - __START_KERNEL_map);
+	load_delta = physaddr - (text_base - __START_KERNEL_map);
 
 	/* Is the address not 2M aligned? */
 	if (load_delta & ~PMD_MASK)
@@ -214,9 +228,9 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	pgd = fixup_pointer(&early_top_pgt, physaddr);
 	p = pgd + pgd_index(__START_KERNEL_map);
 	if (la57)
-		*p = (unsigned long)level4_kernel_pgt;
+		*p = SYM_ABS_VAL(level4_kernel_pgt);
 	else
-		*p = (unsigned long)level3_kernel_pgt;
+		*p = SYM_ABS_VAL(level3_kernel_pgt);
 	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta;
 
 	if (la57) {
@@ -273,7 +287,7 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	pmd_entry += sme_get_me_mask();
 	pmd_entry +=  physaddr;
 
-	for (i = 0; i < DIV_ROUND_UP(_end - _text, PMD_SIZE); i++) {
+	for (i = 0; i < DIV_ROUND_UP(end_base - text_base, PMD_SIZE); i++) {
 		int idx = i + (physaddr >> PMD_SHIFT);
 
 		pmd[idx % PTRS_PER_PMD] = pmd_entry + i * PMD_SIZE;
@@ -298,11 +312,11 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	pmd = fixup_pointer(level2_kernel_pgt, physaddr);
 
 	/* invalidate pages before the kernel image */
-	for (i = 0; i < pmd_index((unsigned long)_text); i++)
+	for (i = 0; i < pmd_index(text_base); i++)
 		pmd[i] &= ~_PAGE_PRESENT;
 
 	/* fixup pages that are part of the kernel image */
-	for (; i <= pmd_index((unsigned long)_end); i++)
+	for (; i <= pmd_index(end_base); i++)
 		if (pmd[i] & _PAGE_PRESENT)
 			pmd[i] += load_delta;
 
