@@ -462,6 +462,7 @@ SECTIONS
 #endif
 	       "Unexpected GOT/PLT entries detected!")
 
+#ifndef CONFIG_X86_PIE
 	/*
 	 * Sections that should stay zero sized, which is safer to
 	 * explicitly check instead of blindly discarding.
@@ -470,6 +471,7 @@ SECTIONS
 		*(.got) *(.igot.*)
 	}
 	ASSERT(SIZEOF(.got) == 0, "Unexpected GOT entries detected!")
+#endif
 
 	.plt : {
 		*(.plt) *(.plt.*) *(.iplt)

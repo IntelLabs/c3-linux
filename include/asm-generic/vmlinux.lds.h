@@ -441,6 +441,17 @@
 	__end_ro_after_init = .;
 #endif
 
+#ifdef CONFIG_X86_PIE
+#define RO_GOT_X86							\
+	.got        : AT(ADDR(.got) - LOAD_OFFSET) {			\
+		__start_got = .;					\
+		*(.got) *(.igot.*);					\
+		__end_got = .;						\
+	}
+#else
+#define RO_GOT_X86
+#endif
+
 /*
  * .kcfi_traps contains a list KCFI trap locations.
  */
@@ -486,6 +497,7 @@
 		BOUNDED_SECTION_PRE_LABEL(.pci_fixup_suspend_late, _pci_fixups_suspend_late, __start, __end) \
 	}								\
 									\
+	RO_GOT_X86							\
 	FW_LOADER_BUILT_IN_DATA						\
 	TRACEDATA							\
 									\
