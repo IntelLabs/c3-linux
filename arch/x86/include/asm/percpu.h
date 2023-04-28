@@ -4,16 +4,26 @@
 
 #ifdef CONFIG_X86_64
 #define __percpu_seg		gs
+#ifdef CONFIG_X86_PIE
+#define __percpu_rel		(%rip)
+#else
+#define __percpu_rel
+#endif /* CONFIG_X86_PIE */
 #else
 #define __percpu_seg		fs
+#define __percpu_rel
 #endif
 
 #ifdef __ASSEMBLY__
 
 #ifdef CONFIG_SMP
-#define PER_CPU_VAR(var)	%__percpu_seg:var
+/* Compatible with Position Independent Code */
+#define PER_CPU_VAR(var)	%__percpu_seg:(var)##__percpu_rel
+/* Rare absolute reference */
+#define PER_CPU_VAR_ABS(var)	%__percpu_seg:var
 #else /* ! SMP */
-#define PER_CPU_VAR(var)	var
+#define PER_CPU_VAR(var)	(var)##__percpu_rel
+#define PER_CPU_VAR_ABS(var)	var
 #endif	/* SMP */
 
 #ifdef CONFIG_X86_64_SMP
@@ -148,10 +158,23 @@ do {									\
 	(typeof(_var))(unsigned long) pfo_val__;			\
 })
 
+/*
+ * Position Independent code uses relative addresses only.
+ * The 'P' modifier prevents RIP-relative addressing in GCC,
+ * so use 'a' modifier instead. Howerver, 'P' modifier allows
+ * RIP-relative addressing in Clang but Clang doesn't support
+ * 'a' modifier.
+ */
+#if defined(CONFIG_X86_PIE) && defined(CONFIG_CC_IS_GCC)
+#define __percpu_stable_arg	__percpu_arg(a[var])
+#else
+#define __percpu_stable_arg	__percpu_arg(P[var])
+#endif
+
 #define percpu_stable_op(size, op, _var)				\
 ({									\
 	__pcpu_type_##size pfo_val__;					\
-	asm(__pcpu_op2_##size(op, __percpu_arg(P[var]), "%[val]")	\
+	asm(__pcpu_op2_##size(op, __percpu_stable_arg, "%[val]")	\
 	    : [val] __pcpu_reg_##size("=", pfo_val__)			\
 	    : [var] "p" (&(_var)));					\
 	(typeof(_var))(unsigned long) pfo_val__;			\
