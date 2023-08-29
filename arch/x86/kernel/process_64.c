@@ -572,10 +572,10 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 		switch_fpu_prepare(prev_fpu, cpu);
 
 	if (cc_context_is_enabled(&prev_p->cc_context)) {
-		cc_save_context(&prev_p->cc_context);
-		cc_load_context(&next_p->cc_context);
+		cc_save_context(&prev_p->cc_context.ctx_raw);
+		cc_load_context(&next_p->cc_context.ctx_raw);
 	} else if (cc_context_is_enabled(&next_p->cc_context)) {
-		cc_load_context(&next_p->cc_context);
+		cc_load_context(&next_p->cc_context.ctx_raw);
 	}
 
 	/* We must save %fs and %gs before load_TLS() because
@@ -873,11 +873,18 @@ unsigned long KSTK_ESP(struct task_struct *task)
 }
 
 void cc_init_context(cc_context_t *ctx) {
-	static const cc_data_key_bytes_t fixed_data_key = DEF_ADDR_KEY_BYTES;
-	static const cc_addr_key_bytes_t fixed_addr_key = DEF_DATA_KEY_BYTES;
+#ifdef CC_USE_FIXED_DATA_KEYS
+	static const data_key_bytes_t fixed_data_key = DEF_ADDR_KEY_BYTES;
+#endif  // CC_USE_FIXED_DATA_KEYS
+#ifdef CC_USE_FIXED_ADDR_KEY
+	static const pointer_key_bytes_t fixed_addr_key = DEF_DATA_KEY_BYTES;
+#endif
 
-	if (cc_context_cc_enabled(&current->cc_context))
-		printk(KERN_NOTICE "Enabling CC for process\n");
+	if (cc_ctx_get_cc_enabled(&current->cc_context.ctx_raw))
+		printk(KERN_NOTICE "Enabling C3 for process\n");
+
+	if (cc_ctx_get_icv_enabled(&current->cc_context.ctx_raw))
+		printk(KERN_NOTICE "Enabling C3 integrity for process\n");
 
 
 
@@ -885,26 +892,29 @@ void cc_init_context(cc_context_t *ctx) {
 
 
 
-	printk(KERN_NOTICE "Setting random data keys\n");
+	printk(KERN_NOTICE "Setting random C3 data keys\n");
 
-	get_random_bytes(&ctx->ctx_raw.p_key_bytes, CC_DATA_KEY_SIZE);
-
-	// NOTE: Currently setting fixed keys for all expect private key
-	//
-	// get_random_bytes(&ctx->ctx_raw.s_key_bytes, CC_DATA_KEY_SIZE);
-	// get_random_bytes(&ctx->ctx_raw.c_key_bytes, CC_DATA_KEY_SIZE);
-	// get_random_bytes(&ctx->ctx_raw.a_key_bytes, CC_POINTER_KEY_SIZE);
-	//
-	memcpy(&ctx->ctx_raw.s_key_bytes, fixed_data_key, CC_DATA_KEY_SIZE);
-	memcpy(&ctx->ctx_raw.c_key_bytes, fixed_data_key, CC_DATA_KEY_SIZE);
-	memcpy(&ctx->ctx_raw.a_key_bytes, fixed_addr_key, CC_ADDR_KEY_SIZE);
+#ifdef CC_USE_FIXED_DATA_KEYS
+	memcpy(&ctx->ctx_raw.dp_key_bytes_, fixed_data_key, CC_DATA_KEY_SIZE);
+	memcpy(&ctx->ctx_raw.ds_key_bytes_, fixed_addr_key, CC_DATA_KEY_SIZE);
+	memcpy(&ctx->ctx_raw.c_key_bytes_, fixed_addr_key, CC_DATA_KEY_SIZE);
+#else
+	get_random_bytes(&ctx->ctx_raw.dp_key_bytes_, CC_DATA_KEY_SIZE);
+	get_random_bytes(&ctx->ctx_raw.ds_key_bytes_, CC_DATA_KEY_SIZE);
+	get_random_bytes(&ctx->ctx_raw.c_key_bytes_, CC_DATA_KEY_SIZE);
+#endif
+#ifdef CC_USE_FIXED_ADDR_KEY
+	memcpy(&ctx->ctx_raw.addr_key_bytes_, fixed_addr_key, CC_ADDR_KEY_SIZE);
+#else
+	get_random_bytes(&ctx->ctx_raw.addr_key_bytes_, CC_ADDR_KEY_SIZE);
+#endif
 }
 
 void cc_clone_context(const cc_context_t *parent,
                       cc_context_t *ctx,
                       uint64_t clone_flags) {
-	cc_context_dump_ctx(parent, "Cloning CC context ");
-	cc_context_dump_ctx(ctx, "                   ");
+	// cc_context_dump_ctx(parent, "Cloning CC context ");
+	// cc_context_dump_ctx(ctx, "                   ");
 
 	memcpy(ctx, parent, sizeof(cc_context_t));
 

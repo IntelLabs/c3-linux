@@ -379,6 +379,9 @@ typedef struct elf64_shdr {
  * Note to userspace developers: size of NT_SIGINFO note may increase
  * in the future to accomodate more fields, don't assume it is fixed!
  */
+#if defined(CONFIG_X86_CC) && defined(CC_COREDUMP_SUPPORT)
+#define NT_C3_CTX       0x89732456
+#endif
 #define NT_SIGINFO      0x53494749
 #define NT_FILE         0x46494c45
 #define NT_PRXFPREG     0x46e62b7f      /* copied from gdb5.1/include/elf/common.h */

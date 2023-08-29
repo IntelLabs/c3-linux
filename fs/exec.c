@@ -609,6 +609,7 @@ static int check_cc_envp(int argc, struct user_arg_ptr argv,
 	const char __user *str = NULL;
 	int len;
 	bprm->cc_enabled = false;
+	bprm->cc_icv_enabled = false;
 
 
 
@@ -638,6 +639,12 @@ static int check_cc_envp(int argc, struct user_arg_ptr argv,
 		if(strstr(str, "CC_ENABLED=1")) {
 			printk(KERN_NOTICE "Detected CC_ENABLED=1 flag on exec");
 			bprm->cc_enabled = true;
+		}
+
+		if (strstr(str, "CC_ICV_ENABLED=1")) {
+			printk(KERN_NOTICE
+			       "Detected CC_ICV_ENABLED=1 flag on exec");
+			bprm->cc_icv_enabled = true;
 		}
 
 
@@ -1891,7 +1898,9 @@ static int bprm_execve(struct linux_binprm *bprm,
 	current->in_execve = 0;
 
 #ifdef CONFIG_X86_CC
-	cc_context_set_cc_enabled(&current->cc_context, bprm->cc_enabled);
+	cc_ctx_set_cc_enabled(&current->cc_context.ctx_raw, bprm->cc_enabled);
+	cc_ctx_set_icv_enabled(&current->cc_context.ctx_raw,
+			       bprm->cc_icv_enabled);
 
 
 
@@ -1901,7 +1910,7 @@ static int bprm_execve(struct linux_binprm *bprm,
 
 	if (cc_context_is_enabled(&current->cc_context)) {
 		cc_init_context(&current->cc_context);
-		cc_load_context(&current->cc_context);
+		cc_load_context(&current->cc_context.ctx_raw);
 	}
 #endif /* CONFIG_X86_CC */
 

@@ -1587,6 +1587,14 @@ static void fill_auxv_note(struct memelfnote *note, struct mm_struct *mm)
 	fill_note(note, "CORE", NT_AUXV, i * sizeof(elf_addr_t), auxv);
 }
 
+#if defined(CONFIG_X86_CC) && defined(CC_COREDUMP_SUPPORT)
+static void fill_c3_note(struct memelfnote *note)
+{
+	fill_note(note, "C3", NT_C3_CTX, sizeof(struct cc_context),
+	          &(current->cc_context.ctx_raw));
+}
+#endif
+
 static void fill_siginfo_note(struct memelfnote *note, user_siginfo_t *csigdata,
 		const kernel_siginfo_t *siginfo)
 {
@@ -1704,6 +1712,9 @@ struct elf_note_info {
 	struct memelfnote signote;
 	struct memelfnote auxv;
 	struct memelfnote files;
+#ifdef CONFIG_X86_CC
+	struct memelfnote c3;
+#endif  // CONFIG_X86_CC
 	user_siginfo_t csigdata;
 	size_t size;
 	int thread_notes;
@@ -1877,6 +1888,11 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	if (fill_files_note(&info->files) == 0)
 		info->size += notesize(&info->files);
 
+#if defined(CONFIG_X86_CC) && defined(CC_COREDUMP_SUPPORT)
+	fill_c3_note(&info->c3);
+	info->size += notesize(&info->c3);
+#endif
+
 	return 1;
 }
 
@@ -1910,6 +1926,10 @@ static int write_note_info(struct elf_note_info *info,
 		if (first && info->files.data &&
 				!writenote(&info->files, cprm))
 			return 0;
+#if defined(CONFIG_X86_CC) && defined(CC_COREDUMP_SUPPORT)
+		if (first && !writenote(&info->c3, cprm))
+			return 0;
+#endif
 
 		for (i = 1; i < info->thread_notes; ++i)
 			if (t->notes[i].data &&

@@ -93,8 +93,8 @@ static __always_inline unsigned long task_size_max(void)
 
 #define untagged_addr(addr) ({ 					\
 	u64 __addr = (__force u64)(addr); 				\
-	if (cc_is_encoded_pointer((__force u64)(addr))) { 		\
-		__addr &= cc_decrypt_pointer((__force u64)(addr));	\
+	if (is_encoded_cc_ptr((__force u64)(addr))) { 			\
+		__addr &= cc_isa_decptr((__force u64)(addr));		\
 	} 								\
 	(__force __typeof__(addr))__addr; 				\
 })

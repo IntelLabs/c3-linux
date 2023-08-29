@@ -8,6 +8,11 @@
 
 
 
+#define CC_COREDUMP_SUPPORT
+
+// #define CC_USE_FIXED_ADDR_KEY
+// #define CC_USE_FIXED_DATA_KEYS
+
 #include <asm/page_64_types.h>
 
 #ifdef __ASSEMBLY__
@@ -31,14 +36,14 @@
 #endif /* __ASSEMBLY__ */
 
 #ifndef __ASSEMBLY__
+#define _CC_GLOBALS_NO_INCLUDES_
+#include "../../../../../../../malloc/cc_globals.h"
 #include <asm/alternative.h>
 #include <linux/printk.h>
 
-#define CC_ADDR_KEY_SIZE 16
-#define CC_DATA_KEY_SIZE 32
+#define CC_ADDR_KEY_SIZE KEY_SIZE(CC_POINTER_CIPHER)
+#define CC_DATA_KEY_SIZE KEY_SIZE(CC_DATA_CIPHER)
 
-typedef uint8_t cc_addr_key_bytes_t[CC_ADDR_KEY_SIZE];
-typedef uint8_t cc_data_key_bytes_t[CC_DATA_KEY_SIZE];
 
 #define DEF_DATA_KEY_BYTES                                                     \
     {                                                                          \
@@ -57,112 +62,12 @@ typedef uint8_t cc_data_key_bytes_t[CC_DATA_KEY_SIZE];
 typedef struct {
 
 
-	struct __attribute__((__packed__)) {
-		union {
-			struct {
-				uint64_t unused : 61;
-				uint64_t rsvd2 : 1;
-				uint64_t rsvd1 : 1;
-				uint64_t cc_enabled : 1;
-			};
-			uint64_t raw;
-		} flags;  // 64-bit flags field
-		uint64_t reserved1;
-		cc_data_key_bytes_t s_key_bytes;  // shared data key
-		cc_data_key_bytes_t p_key_bytes;  // private data key
-		cc_data_key_bytes_t c_key_bytes;  // code key
-		cc_addr_key_bytes_t a_key_bytes;  // address / pointer key
-	} ctx_raw;
+	struct cc_context ctx_raw;
 } cc_context_t;
-
-#ifdef LEGACY_32B_FORMAT
-	#define TOP_CANONICAL_BIT_OFFSET 55
-	#define PLAINTEXT_SIZE 26
-	#define CIPHERTEXT_SIZE 32
-	#define SIZE_SIZE 5
-	#define ADJUST_SIZE 1
-#else // new 24b cipher format
-	#define TOP_CANONICAL_BIT_OFFSET 47
-	#define PLAINTEXT_SIZE 32
-	#define CIPHERTEXT_SIZE 24
-	#define SIZE_SIZE 6
-	#define CIPHERTEXT_LOW_SIZE 15
-	#define S_BIT_SIZE 1
-	#define PLAINTEXT_VERSION_SIZE 4
-	#define CIPHERTEXT_HIGH_OFFSET  (PLAINTEXT_SIZE+CIPHERTEXT_LOW_SIZE+S_BIT_SIZE)
-	#define CANARY_SIZE (CIPHERTEXT_SIZE-PLAINTEXT_VERSION_SIZE-CIPHERTEXT_LOW_SIZE)
-	#define S_EXTENDED_SIZE (64-2*S_BIT_SIZE-CANARY_SIZE-CIPHERTEXT_LOW_SIZE-PLAINTEXT_SIZE)
-	#define SPECIAL_SIZE_ENCODING_WITH_ADJUST 31 
-#endif
-
-#define PLAINTEXT_OFFSET 0
-#define CIPHERTEXT_OFFSET (PLAINTEXT_OFFSET + PLAINTEXT_SIZE)
-#define VERSION_OFFSET (CIPHERTEXT_OFFSET + CIPHERTEXT_SIZE - VERSION_SIZE)
-#define SIZE_OFFSET (CIPHERTEXT_OFFSET + CIPHERTEXT_SIZE)
-#ifdef LEGACY_32B_FORMAT
-	#define ADJUST_OFFSET (SIZE_OFFSET + SIZE_SIZE)
-#endif
-
-#define FMASK 0xFFFFFFFFFFFFFFFFULL
-#define SIMON_ROUNDS 10
-
-#define BOX_PAD_FOR_STRLEN_FIX 48
-
-// Use a prime number for depth for optimum results
-#define QUARANTINE_DEPTH 373
-#define QUARANTINE_WIDTH 2
-
-static __always_inline uint64_t get_low_canonical_bits(uint64_t pointer) {
-	return pointer & (FMASK >> (64-TOP_CANONICAL_BIT_OFFSET-1));
-}
-
-static __always_inline int is_canonical(uint64_t pointer) {
-	return (pointer == get_low_canonical_bits(pointer)) ? 1 : 0;
-}
-
-static __always_inline int is_encoded_pointer(const void* p) {
-  return !is_canonical((uint64_t) p);
-}
-
-static __always_inline int cc_is_encoded_pointer(const u64 ptr) {
-        return is_encoded_pointer((const void *) ptr);
-}
-
-static __always_inline u64 cc_decrypt_pointer(u64 ptr) {
-	asm(".byte 0xf0\n"
-	    ".byte 0x48\n"
-	    ".byte 0x01\n"
-	    ".byte 0xc0\n"
-	    : "+a"(ptr) : : );
-	return ptr;
-}
-
-static __always_inline void cc_save_context(const cc_context_t *const ctx) {
-	const u64 ptr = (u64)&(ctx->ctx_raw);
-	__asm__ __volatile__(".byte 0xf0; .byte 0x2f" : : "a" (ptr));
-}
-
-static __always_inline void cc_load_context(cc_context_t *const ctx) {
-	const u64 ptr = (u64)&ctx->ctx_raw;
-	__asm__ __volatile__(".byte 0xf0; .byte 0xfa" : : "a" (ptr));
-}
-
-static __always_inline bool
-cc_context_cc_enabled(const cc_context_t *const ctx) {
-	return ctx->ctx_raw.flags.cc_enabled;
-}
-
-static __always_inline void
-cc_context_set_cc_enabled(cc_context_t *const ctx, bool val) {
-	ctx->ctx_raw.flags.cc_enabled = val;
-}
-
-
-
 
 static __always_inline bool
 cc_context_is_enabled(const cc_context_t *const ctx) {
-	if (cc_context_cc_enabled(ctx))
+	if (cc_ctx_get_cc_enabled(&ctx->ctx_raw))
 		return true;
 
 
@@ -174,7 +79,7 @@ cc_context_is_enabled(const cc_context_t *const ctx) {
 
 static __always_inline void
 cc_context_dump_ctx(const cc_context_t *ctx, const char *msg) {
-	printk(KERN_NOTICE "%s (cc%d)\n", msg, cc_context_cc_enabled(ctx));
+	printk(KERN_NOTICE "%s (cc%d)\n", msg, cc_ctx_get_cc_enabled(&ctx->ctx_raw));
 
 
 

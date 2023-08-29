@@ -4,6 +4,7 @@
 
 #include <linux/sched.h>
 #include <linux/unistd.h>
+#include <asm/cc.h>
 #include <asm/exec.h>
 #include <uapi/linux/binfmts.h>
 
@@ -16,6 +17,7 @@ struct filename;
  */
 struct linux_binprm {
 	bool cc_enabled;
+	bool cc_icv_enabled;
 
 
 
