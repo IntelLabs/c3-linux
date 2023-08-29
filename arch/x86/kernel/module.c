@@ -25,6 +25,13 @@
 #include <asm/setup.h>
 #include <asm/unwind.h>
 
+#ifndef _CC_GLOBALS_NO_INCLUDES_
+#define _CC_GLOBALS_NO_INCLUDES_
+#endif
+#include <linux/ctype.h>
+#include <linux/try_box.h>
+#include <linux/cc_globals.h>
+
 #if 0
 #define DEBUGP(fmt, ...)				\
 	printk(KERN_DEBUG fmt, ##__VA_ARGS__)
@@ -153,8 +160,30 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 	Elf64_Rela *rel = (void *)sechdrs[relsec].sh_addr;
 	Elf64_Sym *sym;
 	void *loc;
+	void *new_loc;
+	void *unencoded_loc;
 	u64 val;
+	u64 new_val;
+	u64 unencoded_val;
+	bool encode_location = false;
+	bool encode_value = true;
 	u64 zero = 0ULL;
+
+	char* sec_name = me->secstrings + sechdrs[relsec].sh_name;
+	encode_value = (me->encoded_address_adjust == 0) ? false : true;
+	if (me->encoded_address_adjust !=0 ){
+		if (sec_name[6] == 'd' && sec_name[7] == 'a') {
+			encode_location = true ;// ".data"
+		} else if (sec_name[6] == 'r' && sec_name[7] == 'o') {
+			encode_location = true ;// ".rodata*"
+		} else if (sec_name[6] == 'b' && sec_name[7] == 's') {
+			encode_location = true ;// ".bss"
+		} else if (sec_name[11] == 'd' && sec_name[12] == 'a') {
+			encode_location = true ;// ".exit.data" and "init.data"
+		} else if (sec_name[7] == 'm' && sec_name[8] == 'c') {
+			encode_value = false; // "__mcount_loc". Disabling ponter encoding for ftrace
+		}
+	}
 
 	DEBUGP("%s relocate section %u to %u\n",
 	       apply ? "Applying" : "Clearing",
@@ -176,7 +205,20 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 		       sym->st_value, rel[i].r_addend, (u64)loc);
 
 		val = sym->st_value + rel[i].r_addend;
-
+		new_val = val;
+		if (ELF64_R_TYPE(rel[i].r_info) == R_X86_64_PLT32) {
+			encode_value = false;
+		}
+		if (encode_value) {
+			new_val += me->encoded_address_adjust; //
+		}
+		new_loc = loc;
+		if (encode_location)
+			new_loc = (void*) ((u64)loc + me->encoded_address_adjust);
+		unencoded_loc = loc;
+		unencoded_val = val;
+		loc = new_loc;
+		val = new_val;
 		switch (ELF64_R_TYPE(rel[i].r_info)) {
 		case R_X86_64_NONE:
 			continue;  /* nothing to write */
@@ -184,6 +226,7 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 			size = 8;
 			break;
 #ifndef CONFIG_X86_PIE
+		BUILD_ASSERT(0); //ERROR: compiling without CONFIG_X86_PIE
 		case R_X86_64_32:
 			if (val != *(u32 *)&val)
 				goto overflow;
@@ -203,11 +246,11 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 #endif
 		case R_X86_64_PC32:
 		case R_X86_64_PLT32:
-			val -= (u64)loc;
+			val = unencoded_val - (u64) unencoded_loc;
 			size = 4;
 			break;
 		case R_X86_64_PC64:
-			val -= (u64)loc;
+			val = unencoded_val - (u64) unencoded_loc;
 			size = 8;
 			break;
 		default:

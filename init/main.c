@@ -114,6 +114,18 @@
 
 #include <kunit/test.h>
 
+#ifndef _CC_GLOBALS_NO_INCLUDES_
+#define _CC_GLOBALS_NO_INCLUDES_
+#endif
+#include <linux/C3defines.h>
+#include <linux/ctype.h>
+// #include <linux/try_box.h>
+#include <linux/cc_globals.h>
+static inline void cc_ctx_set_shadow_rip_enabled(struct cc_context *ctx,
+                                                 bool shadow_rip_enabled) {
+    ctx->flags_.bitfield_.shadow_rip_enabled_ = shadow_rip_enabled;
+}
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -1305,6 +1317,14 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	int count = preempt_count();
 	char msgbuf[64];
 	int ret;
+	
+	//C3
+	struct cc_context ctx;
+	if (!is_canonical((u64)fn)) {
+		cc_save_context(&ctx);
+		cc_ctx_set_shadow_rip_enabled(&ctx, true);
+		cc_load_context(&ctx);
+	}
 
 	if (initcall_blacklisted(fn))
 		return -EPERM;
