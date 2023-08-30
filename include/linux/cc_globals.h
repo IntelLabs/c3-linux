@@ -38,7 +38,7 @@ typedef uint8_t u8;
     } while (0)
 #endif
 
-#define BITMASK(x) (0xFFFFFFFFFFFFFFFF >> (64 - (x)))
+#define C3_BITMASK(x) (0xFFFFFFFFFFFFFFFF >> (64 - (x)))
 
 #define MAGIC_LIT_START 1
 #define MAGIC_LIT_END 2
@@ -53,7 +53,7 @@ typedef uint8_t u8;
 
 #define CC_STACK_ID_VAL 0x3e
 
-#define KEY_SIZE(cipher)                                                       \
+#define C3_KEY_SIZE(cipher)                                                       \
     (((cipher) == BIPBIP_CIPHER) ? 32 : ((cipher) == ASCON_CIPHER) ? 16 : -1)
 
 #define KEY_SCHEDULE_SIZE(cipher) (((cipher) == ASCON_CIPHER) ? 16 : -1)
@@ -68,17 +68,17 @@ typedef uint8_t u8;
 
 #define CIPHER_OFFSET_BITS 3
 
-typedef uint8_t pointer_key_bytes_t[KEY_SIZE(CC_POINTER_CIPHER)];
+typedef uint8_t pointer_key_bytes_t[C3_KEY_SIZE(CC_POINTER_CIPHER)];
 typedef struct {
     int size_;
-    uint8_t bytes_[KEY_SIZE(CC_POINTER_CIPHER)];
+    uint8_t bytes_[C3_KEY_SIZE(CC_POINTER_CIPHER)];
 } pointer_key_t;
 
-typedef uint8_t data_key_bytes_t[KEY_SIZE(CC_DATA_CIPHER)];
+typedef uint8_t data_key_bytes_t[C3_KEY_SIZE(CC_DATA_CIPHER)];
 typedef uint8_t data_key_schedule_t[KEY_SCHEDULE_SIZE(CC_DATA_CIPHER)];
 typedef struct {
     int size_;
-    uint8_t bytes_[KEY_SIZE(CC_DATA_CIPHER)];
+    uint8_t bytes_[C3_KEY_SIZE(CC_DATA_CIPHER)];
 } data_key_t;
 
 #define CC_TRIPWIRES_ENABLE
@@ -288,7 +288,7 @@ static inline uint64_t mask_n_lower_bits(uint64_t val, int n) {
  */
 static inline int is_encoded_cc_ptr(const uint64_t ptr) {
     const ca_t ca = get_ca_t(ptr);
-    return (ca.enc_size_ == 0x0 || ca.enc_size_ == BITMASK(SIZE_SIZE)) ? 0 : 1;
+    return (ca.enc_size_ == 0x0 || ca.enc_size_ == C3_BITMASK(SIZE_SIZE)) ? 0 : 1;
 }
 
 /**
