@@ -110,7 +110,7 @@ typedef uint64_t tw_t;
 #define VERSION_OFFSET (CIPHERTEXT_OFFSET + CIPHERTEXT_SIZE - VERSION_SIZE)
 #define SIZE_OFFSET (CIPHERTEXT_OFFSET + CIPHERTEXT_SIZE)
 
-#define FMASK 0xFFFFFFFFFFFFFFFFULL
+#define C3_FMASK 0xFFFFFFFFFFFFFFFFULL
 
 #define BOX_PAD_FOR_STRLEN_FIX 48
 
@@ -228,19 +228,19 @@ static inline ca_t get_ca_t(uint64_t ptr) {
 }
 
 static inline uint64_t get_low_canonical_bits(uint64_t pointer) {
-    return pointer & (FMASK >> (64 - TOP_CANONICAL_BIT_OFFSET - 1));
+    return pointer & (C3_FMASK >> (64 - TOP_CANONICAL_BIT_OFFSET - 1));
 }
 
 static inline cc_pointer_t *convert_to_cc_ptr(uint64_t *pointer) {
     return (cc_pointer_t *)pointer;  // NOLINT
 }
 
-static inline uint8_t get_size(uint64_t pointer) {
+static inline uint8_t get_enc_size(uint64_t pointer) {
     return convert_to_cc_ptr(&pointer)->enc_size_;
 }
 
 static inline uint8_t get_adjust(uint64_t pointer) {
-    uint8_t enc_size = get_size(pointer);
+    uint8_t enc_size = get_enc_size(pointer);
     return (enc_size == SPECIAL_SIZE_ENCODING_WITH_ADJUST) ? 1 : 0;
 }
 
@@ -257,13 +257,12 @@ static inline uint64_t get_plaintext(uint64_t pointer) {
 }
 
 static inline uint64_t get_tweak_mask(uint8_t size) {
-    return (FMASK << (size + MIN_ALLOC_OFFSET - 1));
+    return (C3_FMASK << (size + MIN_ALLOC_OFFSET - 1));
 }
 
 static inline int is_canonical(uint64_t pointer) {
-    uint64_t masked_pointer = pointer & 0xFFFF800000000000;
-    return (masked_pointer == 0x0 || masked_pointer == 0xFFFF800000000000) ? 1 : 0;
-    //return (pointer == get_low_canonical_bits(pointer)) ? 1 : 0;
+    const uint64_t high = pointer >> (TOP_CANONICAL_BIT_OFFSET);
+    return high == 0 || high == (C3_FMASK >> (TOP_CANONICAL_BIT_OFFSET));
 }
 
 static inline size_t decode_size(uint8_t size_encoded) {
@@ -271,8 +270,8 @@ static inline size_t decode_size(uint8_t size_encoded) {
             1ULL << ((size_t)size_encoded + MIN_ALLOC_OFFSET - 1));  // NOLINT
 }
 
-static inline size_t get_size_in_bytes(uint64_t pointer) {
-    uint8_t size_encoded = get_size(pointer);
+static inline size_t get_enc_size_in_bytes(uint64_t pointer) {
+    uint8_t size_encoded = get_enc_size(pointer);
     return decode_size(size_encoded);
 }
 
@@ -335,6 +334,15 @@ static inline uint64_t cc_isa_decptr(uint64_t pointer) {
     return pointer;
 }
 
+static inline void cc_isa_invicv(uint64_t pointer) {
+    asm(".byte 0xf0   		\n"
+        ".byte 0x48			\n"
+        ".byte 0x2B			\n"
+        ".byte 0xc0         \n"
+        :
+        : [ ptr ] "a"(pointer)
+        :);
+}
 /**
  * @brief Saves current C3 state into given cc_context buffer
  *
@@ -356,6 +364,67 @@ static inline void cc_load_context(const struct cc_context *ptr) {
 static inline uint64_t cc_dec_if_encoded_ptr(uint64_t ptr) {
     return is_encoded_cc_ptr(ptr) ? cc_isa_decptr(ptr) : ptr;
 }
+
+#ifdef __KERNEL__
+
+#include <linux/gfp_types.h>
+#include <linux/try_box.h>
+#include <linux/string.h>
+
+extern uint64_t alloc_not_encptr;
+extern uint64_t alloc_encptr;
+extern uint64_t non_exclude_alloc_not_encptr;
+
+__attribute__((unused))
+static void cc3_print_alloc_stats(void)
+{
+	#ifdef printk //printk not always defined where we need to collect stats
+	
+	//intentionally left int since fpu not always online where we need it to be
+	uint64_t alloc_percent = 100*alloc_encptr/(alloc_encptr+alloc_not_encptr);
+	printk("CC3- alloc stats enc: %llu unenc: %llu total: %llu enc_pct: %llu\n", alloc_encptr, alloc_not_encptr, (alloc_encptr+alloc_not_encptr), alloc_percent);
+	#endif
+}
+
+__attribute__((unused))
+static void* cc3_kernel_encptr(void* ptr, size_t size, gfp_t gfpflags)
+{
+    ptr_metadata_t ptr_metadata = {0};
+    bool is_ca=false;
+    bool did_encptr=false;
+	bool non_exclude_flag = false;
+    if( (___GFP_CC3_INCLUDE&gfpflags) || !( (___GFP_HIGH&gfpflags) || (___GFP_CC3_EXCLUDE&gfpflags) || (__GFP_DMA&gfpflags) || (__GFP_DMA32&gfpflags) ) ) 
+    {
+        is_ca = is_encoded_cc_ptr((uint64_t)ptr);
+        if (ptr != NULL && !is_ca ) {	
+			if(try_box((uint64_t)ptr, size, &ptr_metadata)) {
+				ptr = (void *)cc_isa_encptr((uint64_t)ptr, &ptr_metadata);
+				did_encptr=true;
+            }
+            if(__GFP_ZERO&gfpflags) {
+                memset(ptr, 0 ,size);
+            }
+        }
+        gfpflags = (gfpflags & ~___GFP_CC3_INCLUDE); //turn off our flag
+        
+    }
+	non_exclude_flag = (___GFP_HIGH&gfpflags) || (__GFP_DMA&gfpflags) || (__GFP_DMA32&gfpflags);
+
+	if(!(___GFP_CC3_NO_COUNT&gfpflags)){
+
+		if(did_encptr){
+			alloc_encptr++;
+		} else {
+			alloc_not_encptr++;
+			if(non_exclude_flag)
+				non_exclude_alloc_not_encptr++;
+		}
+	}
+
+    return ptr;
+}
+
+#endif // __KERNEL__
 
 #ifdef CC_INTEGRITY_ENABLE
 
@@ -414,8 +483,8 @@ static inline void cc_set_icv_enabled(int val) {
  * @brief Sets ICV for a memory range and zeroes memory
  */
 static inline void cc_set_icv_and_zero(void *addr, size_t size) {
-    uint64_t uptr;
-    uint64_t end;
+    uint64_t uptr=0;
+    uint64_t end=0;
     cc_set_icv_lock(0);
     uptr = (uint64_t)addr;
     for ( end = uptr + size; uptr < end; uptr += sizeof(char)) {
@@ -428,10 +497,10 @@ static inline void cc_set_icv_and_zero(void *addr, size_t size) {
  * @brief Sets ICV for a memory range but keeps memory content
  */
 static inline void cc_set_icv(void *addr, size_t size) {
-    uint64_t uptr;
-    uint64_t end;
+    uint64_t uptr=0;
+    uint64_t end=0;
     cc_set_icv_lock(0);
-     uptr = (uint64_t)addr;
+    uptr = (uint64_t)addr;
     for (end = uptr + size; uptr < end; uptr += sizeof(char)) {
         __asm__ volatile("mov (%[ptr]), %%al  \n"
                          "mov %%al, (%[ptr])  \n"
@@ -498,6 +567,17 @@ static inline T cc_isa_encptr(T ptr, size_t size, uint8_t version = 0) {
     }
     md.version_ = version;
     return (T)cc_isa_encptr(ptr, &md);
+}
+
+/**
+ * @brief Call C3 ISA to invalidate given pointer using provided metadata
+ *
+ * @tparam T type convertible to a uint64_t
+ * @param ptr
+ * @return void
+ */
+template <typename T> static inline void cc_isa_invicv(T ptr) {
+    cc_isa_invicv((uint64_t)ptr);
 }
 
 /**
@@ -572,5 +652,6 @@ static inline T cc_ctx_get_shadow_rip(const struct cc_context *ctx) {
 #endif  // CC_SHADOW_RIP_ENABLE
 
 #endif  // defined(__cplusplus)
+
 
 #endif  // MALLOC_CC_GLOBALS_H_

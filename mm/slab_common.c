@@ -217,7 +217,7 @@ static struct kmem_cache *create_cache(const char *name,
 		useroffset = usersize = 0;
 
 	err = -ENOMEM;
-	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
+	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL|___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT);
 	if (!s)
 		goto out;
 
@@ -663,7 +663,7 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name,
 		unsigned int size, slab_flags_t flags,
 		unsigned int useroffset, unsigned int usersize)
 {
-	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT);
+	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT|___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT);
 
 	if (!s)
 		panic("Out of memory when creating slab %s\n", name);
@@ -971,20 +971,33 @@ void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller
 
 void *__kmalloc_node(size_t size, gfp_t flags, int node)
 {
-	return __do_kmalloc_node(size, flags, node, _RET_IP_);
+	void* retAddr = NULL;
+	retAddr = __do_kmalloc_node(size, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node, _RET_IP_);
+	retAddr = cc3_kernel_encptr(retAddr, size, flags);
+	 
+	return retAddr;
 }
 EXPORT_SYMBOL(__kmalloc_node);
 
 void *__kmalloc(size_t size, gfp_t flags)
 {
-	return __do_kmalloc_node(size, flags, NUMA_NO_NODE, _RET_IP_);
+	void* retAddr = NULL;
+	retAddr = __do_kmalloc_node(size, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, NUMA_NO_NODE, _RET_IP_);
+	retAddr = cc3_kernel_encptr(retAddr, size, flags);
+	 
+	return retAddr;
+	
 }
 EXPORT_SYMBOL(__kmalloc);
 
 void *__kmalloc_node_track_caller(size_t size, gfp_t flags,
 				  int node, unsigned long caller)
 {
-	return __do_kmalloc_node(size, flags, node, caller);
+	void* retAddr = NULL;
+	retAddr = __do_kmalloc_node(size, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node, caller);
+	retAddr = cc3_kernel_encptr(retAddr, size, flags);
+	 
+	return retAddr;
 }
 EXPORT_SYMBOL(__kmalloc_node_track_caller);
 
@@ -1002,7 +1015,12 @@ void kfree(const void *object)
 	struct folio *folio;
 	struct slab *slab;
 	struct kmem_cache *s;
+	bool is_ca=false;
 
+	is_ca = is_encoded_cc_ptr((uint64_t)object);
+	if (is_ca) {
+		object = (void*) cc_isa_decptr((uint64_t) object);
+	}
 	trace_kfree(_RET_IP_, object);
 
 	if (unlikely(ZERO_OR_NULL_PTR(object)))
@@ -1058,12 +1076,14 @@ size_t __ksize(const void *object)
 
 void *kmalloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 {
-	void *ret = __kmem_cache_alloc_node(s, gfpflags, NUMA_NO_NODE,
+	void *ret = __kmem_cache_alloc_node(s, (gfpflags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, NUMA_NO_NODE,
 					    size, _RET_IP_);
 
 	trace_kmalloc(_RET_IP_, ret, size, s->size, gfpflags, NUMA_NO_NODE);
 
 	ret = kasan_kmalloc(s, ret, size, gfpflags);
+	ret = cc3_kernel_encptr(ret, size, gfpflags);
+
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_trace);
@@ -1071,11 +1091,12 @@ EXPORT_SYMBOL(kmalloc_trace);
 void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags,
 			 int node, size_t size)
 {
-	void *ret = __kmem_cache_alloc_node(s, gfpflags, node, size, _RET_IP_);
+	void *ret = __kmem_cache_alloc_node(s, (gfpflags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node, size, _RET_IP_);
 
 	trace_kmalloc(_RET_IP_, ret, size, s->size, gfpflags, node);
 
 	ret = kasan_kmalloc(s, ret, size, gfpflags);
+	ret = cc3_kernel_encptr(ret, size, gfpflags);
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_node_trace);
@@ -1126,20 +1147,22 @@ static void *__kmalloc_large_node(size_t size, gfp_t flags, int node)
 
 void *kmalloc_large(size_t size, gfp_t flags)
 {
-	void *ret = __kmalloc_large_node(size, flags, NUMA_NO_NODE);
+	void *ret = __kmalloc_large_node(size, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, NUMA_NO_NODE);
 
 	trace_kmalloc(_RET_IP_, ret, size, PAGE_SIZE << get_order(size),
 		      flags, NUMA_NO_NODE);
+	ret = cc3_kernel_encptr(ret, size, flags);
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_large);
 
 void *kmalloc_large_node(size_t size, gfp_t flags, int node)
 {
-	void *ret = __kmalloc_large_node(size, flags, node);
+	void *ret = __kmalloc_large_node(size,  (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node);
 
 	trace_kmalloc(_RET_IP_, ret, size, PAGE_SIZE << get_order(size),
 		      flags, node);
+	ret = cc3_kernel_encptr(ret, size, flags);
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_large_node);
@@ -1388,16 +1411,24 @@ __do_krealloc(const void *p, size_t new_size, gfp_t flags)
 void *krealloc(const void *p, size_t new_size, gfp_t flags)
 {
 	void *ret;
-
+	bool is_ca=false;
+	//if it was a CA, make it again a CA, but check new flags
+	if (is_encoded_cc_ptr((uint64_t)p)) {
+		p = (void*) cc_isa_decptr((uint64_t) p);
+		is_ca=true;
+	}
 	if (unlikely(!new_size)) {
 		kfree(p);
 		return ZERO_SIZE_PTR;
 	}
 
-	ret = __do_krealloc(p, new_size, flags);
+	ret = __do_krealloc(p, new_size, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE | ___GFP_CC3_NO_COUNT);
 	if (ret && kasan_reset_tag(p) != kasan_reset_tag(ret))
 		kfree(p);
 
+	if(is_ca){
+		ret = cc3_kernel_encptr(ret, new_size, flags);
+	}
 	return ret;
 }
 EXPORT_SYMBOL(krealloc);

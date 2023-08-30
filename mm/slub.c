@@ -3397,7 +3397,8 @@ static void *__slab_alloc_node(struct kmem_cache *s,
 	}
 
 	object = alloc_single_from_new_slab(s, slab, orig_size);
-
+	
+	object = cc3_kernel_encptr(object, orig_size,gfpflags);
 	return object;
 }
 #endif /* CONFIG_SLUB_TINY */
@@ -3445,6 +3446,9 @@ static __fastpath_inline void *slab_alloc_node(struct kmem_cache *s, struct list
 	init = slab_want_init_on_alloc(gfpflags, s);
 
 out:
+	
+	object = cc3_kernel_encptr(object, orig_size,gfpflags);
+	
 	/*
 	 * When init equals 'true', like for kzalloc() family, only
 	 * @orig_size bytes might be zeroed instead of s->object_size
@@ -3802,6 +3806,10 @@ void __kmem_cache_free(struct kmem_cache *s, void *x, unsigned long caller)
 
 void kmem_cache_free(struct kmem_cache *s, void *x)
 {
+	
+	if (is_encoded_cc_ptr((uint64_t)x)) {
+		x = (void*) cc_isa_decptr((uint64_t) x);
+	}
 	s = cache_from_obj(s, x);
 	if (!s)
 		return;
@@ -3892,13 +3900,21 @@ int build_detached_freelist(struct kmem_cache *s, size_t size,
 /* Note that interrupts must be enabled when calling this function. */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p)
 {
+	int i=0;
 	if (!size)
 		return;
 
+	for(i = 0; i < size; i++) {
+		if (is_encoded_cc_ptr((uint64_t)p[i])) {
+			p[i] = (void*) cc_isa_decptr((uint64_t) p[i]);
+		}		
+	}
+
 	do {
 		struct detached_freelist df;
-
+		
 		size = build_detached_freelist(s, size, p, &df);
+
 		if (!df.slab)
 			continue;
 
@@ -4013,7 +4029,7 @@ error:
 int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 			  void **p)
 {
-	int i;
+	int i,j;
 	struct obj_cgroup *objcg = NULL;
 
 	if (!size)
@@ -4024,8 +4040,11 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 	if (unlikely(!s))
 		return 0;
 
-	i = __kmem_cache_alloc_bulk(s, flags, size, p, objcg);
+	i = __kmem_cache_alloc_bulk(s, (flags& ~___GFP_CC3_INCLUDE) | ___GFP_CC3_EXCLUDE| ___GFP_CC3_NO_COUNT, size, p, objcg);
 
+	for (j = 0; j < size; j++){
+		p[j] = cc3_kernel_encptr(p[j], s->object_size, flags);
+	}
 	/*
 	 * memcg and kmem_cache debug support and memory initialization.
 	 * Done outside of the IRQ disabled fastpath loop.
@@ -4297,7 +4316,7 @@ static int init_kmem_cache_nodes(struct kmem_cache *s)
 			continue;
 		}
 		n = kmem_cache_alloc_node(kmem_cache_node,
-						GFP_KERNEL, node);
+						GFP_KERNEL|___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT, node);
 
 		if (!n) {
 			free_kmem_cache_nodes(s);
@@ -4971,7 +4990,7 @@ static int slab_memory_callback(struct notifier_block *self,
 static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 {
 	int node;
-	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT);
+	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT|___GFP_CC3_EXCLUDE);
 	struct kmem_cache_node *n;
 
 	memcpy(s, static_cache, kmem_cache->object_size);

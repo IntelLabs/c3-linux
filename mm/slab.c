@@ -3369,6 +3369,12 @@ static __always_inline void __cache_free(struct kmem_cache *cachep, void *objp,
 					 unsigned long caller)
 {
 	bool init;
+	bool is_ca;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+	}
 
 	memcg_slab_free_hook(cachep, virt_to_slab(objp), &objp, 1);
 
@@ -3401,6 +3407,13 @@ static __always_inline void __cache_free(struct kmem_cache *cachep, void *objp,
 void ___cache_free(struct kmem_cache *cachep, void *objp,
 		unsigned long caller)
 {
+	bool is_ca;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+	}
+	
 	struct array_cache *ac = cpu_cache_get(cachep);
 
 	check_irq_off();
@@ -3440,11 +3453,15 @@ static __always_inline
 void *__kmem_cache_alloc_lru(struct kmem_cache *cachep, struct list_lru *lru,
 			     gfp_t flags)
 {
-	void *ret = slab_alloc(cachep, lru, flags, cachep->object_size, _RET_IP_);
+	ptr_metadata_t ptr_metadata = {0};
+	bool is_ca=false;
+	void *retAddr = slab_alloc(cachep, lru, flags, cachep->object_size, _RET_IP_);
 
-	trace_kmem_cache_alloc(_RET_IP_, ret, cachep, flags, NUMA_NO_NODE);
+	trace_kmem_cache_alloc(_RET_IP_, retAddr, cachep, flags, NUMA_NO_NODE);
 
-	return ret;
+	retAddr = cc3_kernel_encptr(retAddr, cachep->object_size, flags);
+
+	return retAddr;
 }
 
 void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
@@ -3569,6 +3586,12 @@ void __do_kmem_cache_free(struct kmem_cache *cachep, void *objp,
 			  unsigned long caller)
 {
 	unsigned long flags;
+	bool is_ca=false;
+
+	is_ca = is_encoded_cc_ptr((uint64_t)objp);
+	if (is_ca) {
+		objp = (void*) cc_isa_decptr((uint64_t) objp);
+	}
 
 	local_irq_save(flags);
 	debug_check_no_locks_freed(objp, cachep->object_size);

@@ -205,7 +205,7 @@ static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 	fwnode_dev_initialized(fwnode, true);
 
 	/* Fill structure */
-	INIT_RADIX_TREE(&domain->revmap_tree, GFP_KERNEL);
+	INIT_RADIX_TREE(&domain->revmap_tree, GFP_KERNEL|___GFP_CC3_EXCLUDE); // panic w/o
 	domain->ops = ops;
 	domain->host_data = host_data;
 	domain->hwirq_max = hwirq_max;

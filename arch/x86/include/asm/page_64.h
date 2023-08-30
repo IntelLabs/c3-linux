@@ -10,6 +10,9 @@
 
 #include <linux/kmsan-checks.h>
 
+#define _CC_GLOBALS_NO_INCLUDES_
+#include <linux/cc_globals.h>
+
 /* duplicated to the one in bootmem.h */
 extern unsigned long max_pfn;
 extern unsigned long phys_base;
@@ -20,10 +23,16 @@ extern unsigned long vmemmap_base;
 
 static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 {
-	unsigned long y = x - KERNEL_MAP_BASE;
+	unsigned long y = 0;
+	bool is_ca=false;
 
-	/* use the carry flag to determine if x was < KERNEL_MAP_BASE */
-	x = y + ((x > y) ? phys_base : (KERNEL_MAP_BASE - PAGE_OFFSET));
+	is_ca = is_encoded_cc_ptr((uint64_t)x);
+	if (is_ca) {
+		x = (unsigned long) cc_isa_decptr((uint64_t) x);
+	}
+	y = x - __START_KERNEL_map;
+	/* use the carry flag to determine if x was < __START_KERNEL_map */
+	x = y + ((x > y) ? phys_base : (__START_KERNEL_map - PAGE_OFFSET));
 
 	return x;
 }

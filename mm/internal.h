@@ -24,13 +24,13 @@ struct folio_batch;
 #define GFP_RECLAIM_MASK (__GFP_RECLAIM|__GFP_HIGH|__GFP_IO|__GFP_FS|\
 			__GFP_NOWARN|__GFP_RETRY_MAYFAIL|__GFP_NOFAIL|\
 			__GFP_NORETRY|__GFP_MEMALLOC|__GFP_NOMEMALLOC|\
-			__GFP_NOLOCKDEP)
+			__GFP_NOLOCKDEP | ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT)
 
 /* The GFP flags allowed during early boot */
-#define GFP_BOOT_MASK (__GFP_BITS_MASK & ~(__GFP_RECLAIM|__GFP_IO|__GFP_FS))
+#define GFP_BOOT_MASK (__GFP_BITS_MASK & ~(__GFP_RECLAIM|__GFP_IO|__GFP_FS| ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT))
 
 /* Control allocation cpuset and node placement constraints */
-#define GFP_CONSTRAINT_MASK (__GFP_HARDWALL|__GFP_THISNODE)
+#define GFP_CONSTRAINT_MASK (__GFP_HARDWALL|__GFP_THISNODE| ___GFP_CC3_EXCLUDE|___GFP_CC3_NO_COUNT)
 
 /* Do not use these with a slab allocator */
 #define GFP_SLAB_BUG_MASK (__GFP_DMA32|__GFP_HIGHMEM|~__GFP_BITS_MASK)

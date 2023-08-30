@@ -84,6 +84,9 @@ static int module_name_match(const char* name1, const char* name2) {
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
 
+uint64_t  alloc_not_encptr = 0;
+uint64_t  alloc_encptr = 0;
+uint64_t  non_exclude_alloc_not_encptr=0;
 /*
  * Mutex protects:
  * 1) List of modules (also safely readable with preempt_disable),

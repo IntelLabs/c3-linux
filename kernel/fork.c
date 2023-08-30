@@ -168,7 +168,7 @@ static struct kmem_cache *task_struct_cachep;
 
 static inline struct task_struct *alloc_task_struct_node(int node)
 {
-	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL, node);
+	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL|___GFP_CC3_EXCLUDE, node); // panic w/o
 }
 
 static inline void free_task_struct(struct task_struct *tsk)
@@ -1668,7 +1668,7 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 		refcount_inc(&current->sighand->count);
 		return 0;
 	}
-	sig = kmem_cache_alloc(sighand_cachep, GFP_KERNEL);
+	sig = kmem_cache_alloc(sighand_cachep, GFP_KERNEL|___GFP_CC3_EXCLUDE); // panic w/o
 	RCU_INIT_POINTER(tsk->sighand, sig);
 	if (!sig)
 		return -ENOMEM;

@@ -1818,6 +1818,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Size of the log buffer */
 	case SYSLOG_ACTION_SIZE_BUFFER:
+		cc3_print_alloc_stats(); // cheating, but works insert C3 stats when reading (dmesg) syslog
 		error = log_buf_len;
 		break;
 	default:

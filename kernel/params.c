@@ -636,7 +636,7 @@ static __modinit int add_sysfs_param(struct module_kobject *mk,
 
 	if (!mk->mp) {
 		/* First allocation. */
-		mk->mp = kzalloc(sizeof(*mk->mp), GFP_KERNEL);
+		mk->mp = kzalloc(sizeof(*mk->mp), GFP_KERNEL|___GFP_CC3_EXCLUDE); // panic w/o
 		if (!mk->mp)
 			return -ENOMEM;
 		mk->mp->grp.name = "parameters";

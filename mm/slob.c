@@ -57,6 +57,10 @@
  * in order to prevent random node placement.
  */
 
+#define _CC_GLOBALS_NO_INCLUDES_
+#include <linux/cc_globals.h>
+#include <linux/try_box.h>
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
@@ -538,7 +542,12 @@ EXPORT_SYMBOL(__kmalloc_node_track_caller);
 void kfree(const void *block)
 {
 	struct folio *sp;
+	bool is_ca=false;
 
+	is_ca = is_encoded_cc_ptr((uint64_t)block);
+	if (is_ca) {
+		block = (void*) cc_isa_decptr((uint64_t) block);
+	}
 	trace_kfree(_RET_IP_, block);
 
 	if (unlikely(ZERO_OR_NULL_PTR(block)))
